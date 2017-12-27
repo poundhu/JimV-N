@@ -173,7 +173,7 @@ function clear_up_environment() {
 
 function install_libvirt() {
     # 安装 libvirt
-    yum install libvirt libvirt-devel python-devel libguestfs -y
+    yum install libvirt libvirt-devel python-devel -y
     yum install libguestfs libguestfs-{devel,tools,xfs,winsupport,rescue} python-libguestfs -y
 }
 

@@ -175,6 +175,7 @@ class Host(object):
                     elif msg['action'] == 'force_reboot':
                         self.guest.destroy()
                         self.guest.create()
+                        Guest.quota(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'shutdown':
                         if self.guest.shutdown() != 0:
@@ -192,6 +193,8 @@ class Host(object):
 
                             if self.guest.create() != 0:
                                 raise RuntimeError('Guest boot failure.')
+
+                            Guest.quota(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'suspend':
                         if self.guest.suspend() != 0:
@@ -248,6 +251,8 @@ class Host(object):
                         # 添加磁盘成功返回时，ret值为0。可参考 Linux 命令返回值规范？
                         if self.guest.attachDeviceFlags(xml=msg['xml'], flags=flags) != 0:
                             raise RuntimeError('Attack disk failure.')
+
+                        Guest.quota(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'detach_disk':
 
