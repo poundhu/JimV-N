@@ -68,7 +68,7 @@ function check_precondition() {
         ;;
     esac
 
-    yum install epel-release -y
+    yum install epel-release centos-release-qemu-ev -y
     yum install redis -y
     yum install python2-pip git net-tools bind-utils gcc -y
     pip install --upgrade pip -i ${PYPI}
@@ -175,6 +175,7 @@ function install_libvirt() {
     # 安装 libvirt
     yum install libvirt libvirt-devel python-devel -y
     yum install libguestfs libguestfs-{devel,tools,xfs,winsupport,rescue} python-libguestfs -y
+    yum install qemu-kvm-ev -y
 }
 
 function handle_ssh_client_config() {
