@@ -11,6 +11,8 @@ import libvirt
 import threading
 from gluster import gfapi
 import xml.etree.ElementTree as ET
+import libvirt_qemu
+import json
 
 from initialize import logger, log_emit, guest_event_emit, q_creating_guest, response_emit
 from models.status import OperateRuleKind, StorageMode, OSType
@@ -254,8 +256,8 @@ class Guest(object):
         else:
             guest_event_emit.update(uuid=guest.UUIDString(), xml=xml)
 
-    @staticmethod
-    def create(conn, msg):
+    @classmethod
+    def create(cls, conn, msg):
 
         try:
             Guest.storage_mode = msg['storage_mode']
@@ -306,6 +308,8 @@ class Guest(object):
             if not guest.start_by_uuid(conn=conn):
                 raise RuntimeError('Start the instance of virtual machine by uuid failure.')
 
+            cls.quota(guest=conn.lookupByUUIDString(uuidstr=guest.uuid), msg=msg)
+
             response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
@@ -314,3 +318,28 @@ class Guest(object):
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   passback_parameters=msg.get('passback_parameters'))
+
+    @staticmethod
+    def quota(guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        for disk in msg['disks']:
+            libvirt_qemu.qemuMonitorCommand(guest, json.dumps({
+                    'execute': 'block_set_io_throttle',
+                    'arguments': {
+                        'device': 'drive-virtio-disk' + str(disk['sequence']),
+                        'iops': int(disk['iops']),
+                        'iops_rd': int(disk['iops_rd']),
+                        'iops_wr': int(disk['iops_wr']),
+                        'iops_max': int(disk['iops_max']),
+                        'iops_max_length': int(disk['iops_max_length']),
+                        'bps': int(disk['bps']),
+                        'bps_rd': int(disk['bps_rd']),
+                        'bps_wr': int(disk['bps_wr']),
+                        'bps_max': int(disk['bps_max']),
+                        'bps_max_length': int(disk['bps_max_length'])
+                    }
+                }),
+                libvirt_qemu.VIR_DOMAIN_QEMU_MONITOR_COMMAND_DEFAULT)
+
