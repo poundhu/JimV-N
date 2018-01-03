@@ -1,54 +1,45 @@
 #!/usr/bin/env bash
 #
-# JimV-C
+# JimV-N
 #
 # Copyright (C) 2017 JimV <james.iter.cn@gmail.com>
 #
 # Author: James Iter <james.iter.cn@gmail.com>
 #
-#  This script will help you to automation install JimV-C.
+#  This script will help you to automation installed JimV-N.
 #
 
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
-export JIMVC_REPOSITORY_URL='https://raw.githubusercontent.com/jamesiter/JimV-C'
-export GENERATE_PASSWORD_SCRIPT_TMP_PATH='/tmp/gen_pswd.sh'
-export SMTP_HOST=''
-export SMTP_USER=''
-export SMTP_PASSWORD=''
+export JIMVN_REPOSITORY_URL='https://raw.githubusercontent.com/jamesiter/JimV-N'
+export EDITION='master'
+export GLOBAL_CONFIG_KEY='H:GlobalConfig'
+export COMPUTE_NODES_HOSTNAME_KEY='S:ComputeNodesHostname'
+export VM_NETWORK_KEY='vm_network'
+export VM_NETWORK_MANAGE_KEY='vm_manage_network'
 
-ARGS=`getopt -o h --long rdb_root_password:,rdb_jimv_password:,redis_password:,jwt_secret:,secret_key:,version:,help -n 'INSTALL.sh' -- "$@"`
+
+ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,help -n 'INSTALL.sh' -- "$@"`
 
 eval set -- "${ARGS}"
 
 while true
 do
     case "$1" in
-        --rdb_root_password)
-            export RDB_ROOT_PSWD=$2
+        --redis_host)
+            export REDIS_HOST=$2
             shift 2
             ;;
-        --rdb_jimv_password)
-            export RDB_JIMV_PSWD=$2
+        --redis_port)
+            export REDIS_PORT=$2
             shift 2
             ;;
         --redis_password)
             export REDIS_PSWD=$2
             shift 2
             ;;
-        --jwt_secret)
-            export JWT_SECRET=$2
-            shift 2
-            ;;
-        --secret_key)
-            export SECRET_KEY=$2
-            shift 2
-            ;;
-        --version)
-            export JIMV_VERSION=$2
-            shift 2
-            ;;
         -h|--help)
-            echo 'INSTALL.sh [-h|--help|--rdb_root_password|--rdb_jimv_password|--redis_password|--jwt_secret|--secret_key|--version]'
+            echo 'INSTALL.sh [-h|--help] {--redis_host,--redis_password,--redis_port}'
+            echo '如果忘记了 redis_password, redis_port 信息，可以在 JimV-C 的 /etc/jimvn.conf 文件中获得。'
             exit 0
             ;;
         --)
@@ -67,60 +58,106 @@ function check_precondition() {
     case ${ID} in
     centos|fedora|rhel)
         if [ ${VERSION_ID} -lt 7 ]; then
-            echo "System version must greater than or equal to 7, We found ${VERSION_ID}."
+            echo "系统版本号必须大于等于 7，检测到当前的系统版本号为 ${VERSION_ID}."
 	        exit 1
         fi
         ;;
     *)
-        echo "${ID} is unknown, Please to be installed manually."
+        echo "系统发行版 ${ID} 未被支持，请手动完成安装。"
 	    exit 1
         ;;
     esac
-}
-
-function prepare() {
-
-    if [ ! ${JIMV_VERSION} ] || [ ${#JIMV_VERSION} -eq 0 ]; then
-        export JIMV_VERSION='master'
-    fi
-
-    if [ ! -e ${GENERATE_PASSWORD_SCRIPT_TMP_PATH} ]; then
-        curl ${JIMVC_REPOSITORY_URL}'/'${JIMV_VERSION}'/misc/gen_pswd.sh' -o ${GENERATE_PASSWORD_SCRIPT_TMP_PATH}
-        chmod +x ${GENERATE_PASSWORD_SCRIPT_TMP_PATH}
-    fi
-
-    if [ ! ${RDB_ROOT_PSWD} ] || [ ${#RDB_ROOT_PSWD} -eq 0 ]; then
-        export RDB_ROOT_PSWD=`${GENERATE_PASSWORD_SCRIPT_TMP_PATH}`
-    fi
-
-    if [ ! ${RDB_JIMV_PSWD} ] || [ ${#RDB_JIMV_PSWD} -eq 0 ]; then
-        export RDB_JIMV_PSWD=`${GENERATE_PASSWORD_SCRIPT_TMP_PATH}`
-    fi
-
-    if [ ! ${REDIS_PSWD} ] || [ ${#REDIS_PSWD} -eq 0 ]; then
-        export REDIS_PSWD=`${GENERATE_PASSWORD_SCRIPT_TMP_PATH} 128`
-    fi
-
-    if [ ! ${JWT_SECRET} ] || [ ${#JWT_SECRET} -eq 0 ]; then
-        export JWT_SECRET=`${GENERATE_PASSWORD_SCRIPT_TMP_PATH} 128`
-    fi
-
-    if [ ! ${SECRET_KEY} ] || [ ${#SECRET_KEY} -eq 0 ]; then
-        export SECRET_KEY=`${GENERATE_PASSWORD_SCRIPT_TMP_PATH} 128`
-    fi
-
-    rm -f ${GENERATE_PASSWORD_SCRIPT_TMP_PATH}
 
     yum install epel-release -y
-    yum install python2-pip git psmisc -y
+    yum install redis -y
+    yum install python2-pip git net-tools bind-utils gcc -y
     pip install --upgrade pip -i ${PYPI}
-    pip install virtualenv -i ${PYPI}
+
+    if [ `egrep -c '(vmx|svm)' /proc/cpuinfo` -eq 0 ]; then
+        echo "需要 CPU 支持 vmx 或 svm, 该 CPU 不支持。"
+        exit 1
+    fi
+
+    if [ ! ${REDIS_HOST} ] || [ ${#REDIS_HOST} -eq 0 ]; then
+        echo "你需要指定参数 '--redis_host'"
+        exit 1
+    fi
+
+    if [ ! ${REDIS_PORT} ]; then
+        export REDIS_PORT='6379'
+    fi
+
+    if [ ! ${REDIS_PSWD} ]; then
+        export REDIS_PSWD=''
+    fi
+
+    # 代替语句 ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'
+    export SERVER_IP=`hostname -I`
+    export SERVER_NETMASK=`ifconfig | grep ${SERVER_IP} | grep -Eo 'netmask ?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*'`
+    export GATEWAY=`route -n | grep '^0.0.0.0' | awk '{ print $2; }'`
+    export DNS1=`nslookup 127.0.0.1 | grep Server | grep -Eo '([0-9]*\.){3}[0-9]*'`
+    export NIC=`ifconfig | grep ${SERVER_IP} -B 1 | head -1 | cut -d ':' -f 1`
+    export HOST_NAME=`grep ${SERVER_IP} /etc/hosts | awk '{ print $2; }'`
+
+    if [ 'x_'${HOST_NAME} = 'x_' ]; then
+        echo "计算节点 IP 地址未在 /etc/hosts 文件中被发现。请完整安装、初始化 JimV-C 后，再安装 JimV-N。"
+        exit 1
+    fi
+
+    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw ping`
+
+    if [ ${REDIS_RESPONSE} != 'x_PONG' ]; then
+        echo "Redis 连接失败，请检查参数 --redis_host, --redis_password, --redis_port 是否正确。"
+        exit 1
+    fi
+
+    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw EXISTS ${GLOBAL_CONFIG_KEY}`
+    if [ ${REDIS_RESPONSE} = 'x_0' ]; then
+        echo "安装 JimV-N 之前，你需要先初始化 JimV-C。"
+        exit 1
+    fi
+
+    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw HEXISTS ${GLOBAL_CONFIG_KEY} ${VM_NETWORK_KEY}`
+    if [ ${REDIS_RESPONSE} = 'x_0' ]; then
+        echo "未在 JimV-C 的配置中发现 key ${VM_NETWORK_KEY}，请重新配置 JimV-C。"
+        exit 1
+    else
+        export VM_NETWORK=`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw HGET ${GLOBAL_CONFIG_KEY} ${VM_NETWORK_KEY}`
+    fi
+
+    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw HEXISTS ${GLOBAL_CONFIG_KEY} ${VM_NETWORK_MANAGE_KEY}`
+    if [ ${REDIS_RESPONSE} = 'x_0' ]; then
+        echo "未在 JimV-C 的配置中发现 key ${VM_NETWORK_MANAGE_KEY}，请重新配置 JimV-C。"
+        exit 1
+    else
+        export VM_NETWORK_MANAGE=`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw HGET ${GLOBAL_CONFIG_KEY} ${VM_NETWORK_MANAGE_KEY}`
+    fi
+
+    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw SISMEMBER ${COMPUTE_NODES_HOSTNAME_KEY} ${HOST_NAME}`
+    if [ ${REDIS_RESPONSE} != 'x_0' ]; then
+        echo "计算节点 ${HOST_NAME} 已存在，请重新指定 --hostname 的值，或清除冲突的计算节点。"
+        exit 1
+    else
+        hostname ${HOST_NAME}
+        echo ${HOST_NAME} > /etc/hostname
+    fi
 }
 
 function set_ntp() {
     timedatectl set-timezone Asia/Shanghai
     timedatectl set-ntp true
     timedatectl status
+}
+
+function custom_repository_origin() {
+    mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup
+    mv /etc/yum.repos.d/epel.repo /etc/yum.repos.d/epel.repo.backup
+    mv /etc/yum.repos.d/epel-testing.repo /etc/yum.repos.d/epel-testing.repo.backup
+    curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo
+    curl -o /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
+    yum clean all
+    rm -rf /var/cache/yum
+    yum makecache
 }
 
 function clear_up_environment() {
@@ -134,163 +171,129 @@ function clear_up_environment() {
     setenforce 0
 }
 
-function install_MariaDB() {
-    # 安装 MariaDB
-    yum install mariadb mariadb-server -y
+function install_libvirt() {
+    # 安装 libvirt
+    yum install libvirt libvirt-devel python-devel libguestfs -y
+    yum install libguestfs libguestfs-{devel,tools,xfs,winsupport,rescue} python-libguestfs -y
+}
 
-    # 配置 MariaDB
-    mkdir -p /etc/systemd/system/mariadb.service.d
-    echo '[Service]' > /etc/systemd/system/mariadb.service.d/limits.conf
-    echo 'LimitNOFILE=65535' >> /etc/systemd/system/mariadb.service.d/limits.conf
-    systemctl --system daemon-reload
+function handle_ssh_client_config() {
+    # 关闭 SSH 服务器端 Key 校验
+    sed -i 's@.*StrictHostKeyChecking.*@StrictHostKeyChecking no@' /etc/ssh/ssh_config
+}
 
-    sed -i '/\[mysqld\]/a\bind-address = 127.0.0.1' /etc/my.cnf
-    sed -i '/\[mysqld\]/a\log-bin' /etc/my.cnf
-    sed -i '/\[mysqld\]/a\expire_logs_days = 1' /etc/my.cnf
-    sed -i '/\[mysqld\]/a\innodb_file_per_table' /etc/my.cnf
-    sed -i '/\[mysqld\]/a\max_connections = 1000' /etc/my.cnf
-
-    # 启动并使其随机启动
-    systemctl enable mariadb.service
-    systemctl start mariadb.service
-
-# 初始化 MariaDB
-mysql_secure_installation << EOF
-
-Y
-${RDB_ROOT_PSWD}
-${RDB_ROOT_PSWD}
-Y
-Y
-Y
-Y
+function handle_net_bonding_bridge() {
+    # 参考地址: https://access.redhat.com/documentation/zh-cn/red_hat_enterprise_linux/7/html/networking_guide/
+cat > /etc/sysconfig/network-scripts/ifcfg-${VM_NETWORK} << EOF
+DEVICE=${VM_NETWORK}
+NAME=${VM_NETWORK}
+TYPE=Bridge
+BOOTPROTO=static
+ONBOOT=yes
+DELAY=0
+IPADDR=${SERVER_IP}
+NETMASK=${SERVER_NETMASK}
+GATEWAY=${GATEWAY}
+DNS1=${DNS1}
+DNS2=8.8.8.8
+IPV6INIT=no
 EOF
 
-    # 测试是否部署成功
-    mysql -u root -p${RDB_ROOT_PSWD} -e 'show databases'
+cat > /etc/sysconfig/network-scripts/ifcfg-bond0 << EOF
+DEVICE=bond0
+NAME=bond0
+TYPE=Bond
+BRIDGE=${VM_NETWORK}
+BONDING_MASTER=yes
+ONBOOT=yes
+BOOTPROTO=none
+BONDING_OPTS="mode=balance-alb xmit_hash_policy=layer3+4"
+EOF
+
+cat > /etc/sysconfig/network-scripts/ifcfg-${NIC} << EOF
+DEVICE=${NIC}
+NAME=${NIC}
+TYPE=Ethernet
+BOOTPROTO=none
+ONBOOT=yes
+MASTER=bond0
+SLAVE=yes
+EOF
+
+    /etc/init.d/network restart
 }
 
-function install_Redis() {
-    # 安装 Redis
-    yum install redis -y
+function create_network_bridge_in_libvirt() {
 
-    # 配置 Redis
-    echo 'vm.overcommit_memory = 1' >> /etc/sysctl.conf
-    sysctl -p
-    sed -i 's@^daemonize no@daemonize yes@g' /etc/redis.conf
-    sed -i 's@^bind 127.0.0.1@bind 0.0.0.0@g' /etc/redis.conf
-    sed -i 's@^appendonly no@appendonly yes@g' /etc/redis.conf
-    echo "requirepass ${REDIS_PSWD}" >> /etc/redis.conf
+cat > /etc/libvirt/qemu/networks/${VM_NETWORK}.xml << EOF
+<network>
+    <uuid>the_uuid</uuid>
+    <name>${VM_NETWORK}</name>
+    <forward mode="bridge"/>
+    <bridge name="${VM_NETWORK}"/>
+</network>
+EOF
 
-    # 启动并使其随机启动
-    systemctl enable redis.service
-    systemctl start redis.service
+    sed -i "s@the_uuid@`uuidgen`@" /etc/libvirt/qemu/networks/${VM_NETWORK}.xml
+
+    # 去除默认的 default 网络定义
+    rm -f /etc/libvirt/qemu/networks/default.xml /etc/libvirt/qemu/networks/autostart/default.xml
+
+    # 使其随服务自动创建
+    cd /etc/libvirt/qemu/networks/autostart/
+    ln -s ../${VM_NETWORK}.xml ${VM_NETWORK}.xml
 }
 
-function install_Nginx() {
-    export NGINX_JIMV_URL=${JIMVC_REPOSITORY_URL}'/'${JIMV_VERSION}'/misc/nginx_jimv.conf'
-
-    # 安装 Nginx
-    yum install nginx -y
-
-    # 配置 Nginx
-    mkdir -p /etc/jimv/keys
-    chown -R www.www /var/lib/nginx
-    sed -i 's@user nginx.*$@user www;@' /etc/nginx/nginx.conf
-    sed -i '/^.*server {/,$d' /etc/nginx/nginx.conf
-    curl ${NGINX_JIMV_URL} >> /etc/nginx/nginx.conf
-
-    # 启动并使其随机启动
-    systemctl enable nginx.service
-    systemctl start nginx.service
+function start_libvirtd() {
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
+    systemctl enable libvirtd
+    systemctl start libvirtd
+    virsh net-destroy default; virsh net-undefine default
 }
 
-function create_web_user() {
-    useradd -m www
-}
-
-function create_web_sites_directory() {
-    su - www -c "mkdir ~/sites"
-}
-
-function clone_and_checkout_JimVC() {
-    su - www -c "git clone https://github.com/jamesiter/JimV-C.git ~/sites/JimV-C"
-    su - www -c "cd ~/sites/JimV-C && git checkout ${JIMV_VERSION}"
+function clone_and_checkout_JimVN() {
+    git clone https://github.com/jamesiter/JimV-N.git /opt/JimV-N
+    if [ ! $? -eq 0 ]; then
+        echo '克隆 JimV-N 失败，请检查网络可用性。'
+        exit 1
+    fi
 }
 
 function install_dependencies_library() {
-    # 创建 python 虚拟环境
-    su - www -c "virtualenv --system-site-packages ~/venv"
-
-    # 导入 python 虚拟环境
-    su - www -c "source ~/venv/bin/activate"
-
-    # 使切入 www 用户时自动导入 python 虚拟环境
-    su - www -c "echo '. ~/venv/bin/activate' >> .bashrc"
-
-    # 安装 JimV-C 所需扩展库
-    su - www -c "pip install -r ~/sites/JimV-C/requirements.txt -i ${PYPI}"
-}
-
-function fit_www_user_permission() {
-    mkdir -p /var/log/jimv
-    chown www.www /var/log/jimv
-
-    mkdir -p /run/jimv
-    chown www.www /run/jimv
-}
-
-function initialization_db() {
-    # 建立 JimV 数据库专属用户
-    mysql -u root -p${RDB_ROOT_PSWD} -e "grant all on jimv.* to jimv@localhost identified by \"${RDB_JIMV_PSWD}\"; flush privileges"
-
-    # 初始化数据库
-    su - www -c "mysql -u jimv -p${RDB_JIMV_PSWD} < ~/sites/JimV-C/misc/init.sql"
-
-    # 确认是否初始化成功
-    mysql -u jimv -p${RDB_JIMV_PSWD} -e 'show databases'
+    # 安装 JimV-N 所需扩展库
+    pip install -r /opt/JimV-N/requirements.txt -i ${PYPI}
 }
 
 function generate_config_file() {
-    cp -v /home/www/sites/JimV-C/jimvc.conf /etc/jimvc.conf
-    sed -i "s/\"db_password\".*$/\"db_password\": \"${RDB_JIMV_PSWD}\",/" /etc/jimvc.conf
-    sed -i "s/\"redis_password\".*$/\"redis_password\": \"${REDIS_PSWD}\",/" /etc/jimvc.conf
-    sed -i "s/\"jwt_secret\".*$/\"jwt_secret\": \"${JWT_SECRET}\",/" /etc/jimvc.conf
-    sed -i "s/\"SECRET_KEY\".*$/\"SECRET_KEY\": \"${SECRET_KEY}\",/" /etc/jimvc.conf
-    sed -i "s/\"smtp_host\".*$/\"smtp_host\": \"${SMTP_HOST}\",/" /etc/jimvc.conf
-    sed -i "s/\"smtp_user\".*$/\"smtp_user\": \"${SMTP_USER}\",/" /etc/jimvc.conf
-    sed -i "s/\"smtp_password\".*$/\"smtp_password\": \"${SMTP_PASSWORD}\",/" /etc/jimvc.conf
+    cp -v /opt/JimV-N/jimvn.conf /etc/jimvn.conf
+    sed -i "s/\"redis_host\".*$/\"redis_host\": \"${REDIS_HOST}\",/" /etc/jimvn.conf
+    sed -i "s/\"redis_password\".*$/\"redis_password\": \"${REDIS_PSWD}\",/" /etc/jimvn.conf
+    sed -i "s/\"redis_port\".*$/\"redis_port\": \"${REDIS_PORT}\",/" /etc/jimvn.conf
 }
 
 function display_summary_information() {
     echo
     echo "=== 信息汇总"
-    echo "MariaDB root 密码: [${RDB_ROOT_PSWD}]"
-    echo "MariaDB jimv 密码: [${RDB_JIMV_PSWD}]"
-    echo "Redis 端口: [6379]"
-    echo "Redis 密码: [${REDIS_PSWD}]"
-    echo "======================="
+    echo "==========="
     echo
-    echo "记录下上面信息，安装 JimV-N 时需要用到。"
-    echo "现在可以通过命令 '/home/www/sites/JimV-C/startup.sh' 启动 JimV-C。"
+    echo "现在可以通过命令 'cd /opt/JimV-N && ./startup.sh' 启动运行 JimV-N。"
 }
 
 function deploy() {
     check_precondition
+    set_ntp
+    custom_repository_origin
     clear_up_environment
-    prepare
-#     set_ntp
-#     create_web_user
-#     create_web_sites_directory
-#     clone_and_checkout_JimVC
-#     fit_www_user_permission
-#     install_MariaDB
-#     install_Redis
-#     install_Nginx
-#     install_dependencies_library
-#     initialization_db
-#     generate_config_file
-#     display_summary_information
+    install_libvirt
+    handle_ssh_client_config
+    handle_net_bonding_bridge
+    create_network_bridge_in_libvirt
+    start_libvirtd
+    clone_and_checkout_JimVN
+    install_dependencies_library
+    generate_config_file
+    display_summary_information
 }
 
 deploy
