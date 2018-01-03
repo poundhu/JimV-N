@@ -197,6 +197,7 @@ function install_libvirt_and_libguestfish() {
     make -j${CPU_COUNT}
     export REALLY_INSTALL=yes
     make install
+    cd ..
     rm -rf ${LIBGUESTFISH_DIRNAME}
 }
 
