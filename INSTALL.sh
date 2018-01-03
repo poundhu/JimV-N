@@ -11,14 +11,13 @@
 
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
 export JIMVN_REPOSITORY_URL='https://raw.githubusercontent.com/jamesiter/JimV-N'
-export EDITION='master'
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export COMPUTE_NODES_HOSTNAME_KEY='S:ComputeNodesHostname'
 export VM_NETWORK_KEY='vm_network'
 export VM_NETWORK_MANAGE_KEY='vm_manage_network'
 
 
-ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,help -n 'INSTALL.sh' -- "$@"`
+ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,version:,help -n 'INSTALL.sh' -- "$@"`
 
 eval set -- "${ARGS}"
 
@@ -37,8 +36,12 @@ do
             export REDIS_PSWD=$2
             shift 2
             ;;
+        --version)
+            export JIMV_VERSION=$2
+            shift 2
+            ;;
         -h|--help)
-            echo 'INSTALL.sh [-h|--help] {--redis_host,--redis_password,--redis_port}'
+            echo 'INSTALL.sh [-h|--help|--version] {--redis_host,--redis_password,--redis_port}'
             echo '如果忘记了 redis_password, redis_port 信息，可以在 JimV-C 的 /etc/jimvn.conf 文件中获得。'
             exit 0
             ;;
@@ -76,6 +79,10 @@ function check_precondition() {
     if [ `egrep -c '(vmx|svm)' /proc/cpuinfo` -eq 0 ]; then
         echo "需要 CPU 支持 vmx 或 svm, 该 CPU 不支持。"
         exit 1
+    fi
+
+    if [ ! ${JIMV_VERSION} ] || [ ${#JIMV_VERSION} -eq 0 ]; then
+        export JIMV_VERSION='master'
     fi
 
     if [ ! ${REDIS_HOST} ] || [ ${#REDIS_HOST} -eq 0 ]; then
@@ -171,10 +178,21 @@ function clear_up_environment() {
     setenforce 0
 }
 
-function install_libvirt() {
+function install_libvirt_and_libguestfish() {
     # 安装 libvirt
-    yum install libvirt libvirt-devel python-devel libguestfs -y
-    yum install libguestfs libguestfs-{devel,tools,xfs,winsupport,rescue} python-libguestfs -y
+    yum install libvirt libvirt-devel python-devel centos-release-qemu-ev -y
+    yum install ocaml-findlib-devel ocaml-gettext-devel ocaml-ounit-devel ocaml-libvirt-devel ocaml-hivex-devel ocaml-ocamldoc -y
+    yum install hivex-devel python-hivex gperf genisoimage flex bison ncurses-devel pcre-devel augeas-devel supermin5 cpio xz -y
+    yum install libxml2 yajl-devel file-devel bash-completion fuse-devel python-devel gcc qemu-kvm-ev -y
+    yum install readline-devel libconfig-devel ntfs-3g-devel -y
+    ln -s /usr/bin/supermin5 /usr/bin/supermin
+    curl http://download.libguestfs.org/1.36-stable/libguestfs-1.36.11.tar.gz -o libguestfs-1.36.11.tar.gz
+    tar -xf libguestfs-1.36.11.tar.gz
+    cd libguestfs-1.36.11
+    ./configure --disable-perl --disable-ruby --disable-haskell --without-java --disable-php --disable-erlang --disable-lua --disable-golang --disable-gobject
+    make -j32
+    export REALLY_INSTALL=yes
+    make install
 }
 
 function handle_ssh_client_config() {
@@ -258,6 +276,7 @@ function clone_and_checkout_JimVN() {
         echo '克隆 JimV-N 失败，请检查网络可用性。'
         exit 1
     fi
+    cd /opt/JimV-N && git checkout ${JIMV_VERSION}
 }
 
 function install_dependencies_library() {
@@ -285,7 +304,7 @@ function deploy() {
     set_ntp
     custom_repository_origin
     clear_up_environment
-    install_libvirt
+    install_libvirt_and_libguestfish
     handle_ssh_client_config
     handle_net_bonding_bridge
     create_network_bridge_in_libvirt
