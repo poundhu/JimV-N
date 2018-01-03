@@ -882,9 +882,3 @@ class Host(object):
                 logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
 
-    @staticmethod
-    def init_guestfish():
-        g = guestfs.GuestFS(python_return_dict=True)
-        g.launch()
-        g.shutdown()
-

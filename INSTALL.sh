@@ -10,15 +10,17 @@
 #
 
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
-export JIMVN_REPOSITORY_URL='https://raw.githubusercontent.com/jamesiter/JimV-N'
-export EDITION='master'
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export COMPUTE_NODES_HOSTNAME_KEY='S:ComputeNodesHostname'
 export VM_NETWORK_KEY='vm_network'
 export VM_NETWORK_MANAGE_KEY='vm_manage_network'
+export CPU_COUNT=`grep '^processor' /proc/cpuinfo | wc -l`
+export LIBGUESTFISH_URL='http://download.libguestfs.org/1.36-stable/libguestfs-1.36.11.tar.gz'
+export LIBGUESTFISH_FILENAME=`basename ${LIBGUESTFISH_URL}`
+export LIBGUESTFISH_DIRNAME=`basename -s .tar.gz ${LIBGUESTFISH_FILENAME}`
 
 
-ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,help -n 'INSTALL.sh' -- "$@"`
+ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,version:,help -n 'INSTALL.sh' -- "$@"`
 
 eval set -- "${ARGS}"
 
@@ -37,8 +39,12 @@ do
             export REDIS_PSWD=$2
             shift 2
             ;;
+        --version)
+            export JIMV_VERSION=$2
+            shift 2
+            ;;
         -h|--help)
-            echo 'INSTALL.sh [-h|--help] {--redis_host,--redis_password,--redis_port}'
+            echo 'INSTALL.sh [-h|--help|--version] {--redis_host,--redis_password,--redis_port}'
             echo '如果忘记了 redis_password, redis_port 信息，可以在 JimV-C 的 /etc/jimvn.conf 文件中获得。'
             exit 0
             ;;
@@ -68,14 +74,13 @@ function check_precondition() {
         ;;
     esac
 
-    yum install epel-release centos-release-qemu-ev -y
-    yum install redis -y
-    yum install python2-pip git net-tools bind-utils gcc -y
-    pip install --upgrade pip -i ${PYPI}
-
     if [ `egrep -c '(vmx|svm)' /proc/cpuinfo` -eq 0 ]; then
         echo "需要 CPU 支持 vmx 或 svm, 该 CPU 不支持。"
         exit 1
+    fi
+
+    if [ ! ${JIMV_VERSION} ] || [ ${#JIMV_VERSION} -eq 0 ]; then
+        export JIMV_VERSION='master'
     fi
 
     if [ ! ${REDIS_HOST} ] || [ ${#REDIS_HOST} -eq 0 ]; then
@@ -90,6 +95,11 @@ function check_precondition() {
     if [ ! ${REDIS_PSWD} ]; then
         export REDIS_PSWD=''
     fi
+
+    yum install epel-release -y
+    yum install redis -y
+    yum install python2-pip git net-tools bind-utils gcc -y
+    pip install --upgrade pip -i ${PYPI}
 
     # 代替语句 ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'
     export SERVER_IP=`hostname -I`
@@ -171,11 +181,24 @@ function clear_up_environment() {
     setenforce 0
 }
 
-function install_libvirt() {
+function install_libvirt_and_libguestfish() {
     # 安装 libvirt
-    yum install libvirt libvirt-devel python-devel -y
-    yum install libguestfs libguestfs-{devel,tools,xfs,winsupport,rescue} python-libguestfs -y
-    yum install qemu-kvm-ev -y
+    yum install libvirt libvirt-devel python-devel centos-release-qemu-ev -y
+    yum install ocaml-findlib-devel ocaml-gettext-devel ocaml-ounit-devel ocaml-libvirt-devel ocaml-hivex-devel ocaml-ocamldoc -y
+    yum install hivex-devel python-hivex gperf genisoimage flex bison ncurses-devel pcre-devel augeas-devel supermin5 cpio xz -y
+    yum install libxml2 yajl-devel file-devel bash-completion fuse-devel python-devel gcc qemu-kvm-ev -y
+    yum install readline-devel libconfig-devel ntfs-3g-devel -y
+    ln -s /usr/bin/supermin5 /usr/bin/supermin
+    curl ${LIBGUESTFISH_URL} -o ${LIBGUESTFISH_FILENAME}
+    tar -xf ${LIBGUESTFISH_FILENAME}
+    rm -f ${LIBGUESTFISH_FILENAME}
+    cd ${LIBGUESTFISH_DIRNAME}
+    ./configure --disable-perl --disable-ruby --disable-haskell --without-java --disable-php --disable-erlang --disable-lua --disable-golang --disable-gobject
+    make -j${CPU_COUNT}
+    export REALLY_INSTALL=yes
+    make install
+    cd ..
+    rm -rf ${LIBGUESTFISH_DIRNAME}
 }
 
 function handle_ssh_client_config() {
@@ -259,6 +282,10 @@ function clone_and_checkout_JimVN() {
         echo '克隆 JimV-N 失败，请检查网络可用性。'
         exit 1
     fi
+
+    if [ ${JIMV_VERSION} != 'master' ]; then
+        cd /opt/JimV-N && git checkout ${JIMV_VERSION}
+    fi
 }
 
 function install_dependencies_library() {
@@ -286,7 +313,7 @@ function deploy() {
     set_ntp
     custom_repository_origin
     clear_up_environment
-    install_libvirt
+    install_libvirt_and_libguestfish
     handle_ssh_client_config
     handle_net_bonding_bridge
     create_network_bridge_in_libvirt

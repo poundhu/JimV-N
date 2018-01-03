@@ -35,8 +35,6 @@ def main():
     signal.signal(signal.SIGTERM, Utils.signal_handle)
     signal.signal(signal.SIGINT, Utils.signal_handle)
 
-    Host.init_guestfish()
-
     guest_creating_progress_report_engine_engine = Host()
     t_ = threading.Thread(
         target=guest_creating_progress_report_engine_engine.guest_creating_progress_report_engine, args=())
