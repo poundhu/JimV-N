@@ -10,7 +10,6 @@
 #
 
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
-export JIMVN_REPOSITORY_URL='https://raw.githubusercontent.com/jamesiter/JimV-N'
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export COMPUTE_NODES_HOSTNAME_KEY='S:ComputeNodesHostname'
 export VM_NETWORK_KEY='vm_network'
@@ -71,11 +70,6 @@ function check_precondition() {
         ;;
     esac
 
-    yum install epel-release -y
-    yum install redis -y
-    yum install python2-pip git net-tools bind-utils gcc -y
-    pip install --upgrade pip -i ${PYPI}
-
     if [ `egrep -c '(vmx|svm)' /proc/cpuinfo` -eq 0 ]; then
         echo "需要 CPU 支持 vmx 或 svm, 该 CPU 不支持。"
         exit 1
@@ -97,6 +91,11 @@ function check_precondition() {
     if [ ! ${REDIS_PSWD} ]; then
         export REDIS_PSWD=''
     fi
+
+    yum install epel-release -y
+    yum install redis -y
+    yum install python2-pip git net-tools bind-utils gcc -y
+    pip install --upgrade pip -i ${PYPI}
 
     # 代替语句 ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'
     export SERVER_IP=`hostname -I`
