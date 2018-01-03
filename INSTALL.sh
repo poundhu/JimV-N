@@ -14,6 +14,10 @@ export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export COMPUTE_NODES_HOSTNAME_KEY='S:ComputeNodesHostname'
 export VM_NETWORK_KEY='vm_network'
 export VM_NETWORK_MANAGE_KEY='vm_manage_network'
+export CPU_COUNT=`grep '^processor' /proc/cpuinfo | wc -l`
+export LIBGUESTFISH_URL='http://download.libguestfs.org/1.36-stable/libguestfs-1.36.11.tar.gz'
+export LIBGUESTFISH_FILENAME=`basename ${LIBGUESTFISH_URL}`
+export LIBGUESTFISH_DIRNAME=`basename -s .tar.gz ${LIBGUESTFISH_FILENAME}`
 
 
 ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,version:,help -n 'INSTALL.sh' -- "$@"`
@@ -185,13 +189,15 @@ function install_libvirt_and_libguestfish() {
     yum install libxml2 yajl-devel file-devel bash-completion fuse-devel python-devel gcc qemu-kvm-ev -y
     yum install readline-devel libconfig-devel ntfs-3g-devel -y
     ln -s /usr/bin/supermin5 /usr/bin/supermin
-    curl http://download.libguestfs.org/1.36-stable/libguestfs-1.36.11.tar.gz -o libguestfs-1.36.11.tar.gz
-    tar -xf libguestfs-1.36.11.tar.gz
-    cd libguestfs-1.36.11
+    curl ${LIBGUESTFISH_URL} -o ${LIBGUESTFISH_FILENAME}
+    tar -xf ${LIBGUESTFISH_FILENAME}
+    rm -f ${LIBGUESTFISH_FILENAME}
+    cd ${LIBGUESTFISH_DIRNAME}
     ./configure --disable-perl --disable-ruby --disable-haskell --without-java --disable-php --disable-erlang --disable-lua --disable-golang --disable-gobject
-    make -j32
+    make -j${CPU_COUNT}
     export REALLY_INSTALL=yes
     make install
+    rm -rf ${LIBGUESTFISH_DIRNAME}
 }
 
 function handle_ssh_client_config() {
@@ -275,7 +281,10 @@ function clone_and_checkout_JimVN() {
         echo '克隆 JimV-N 失败，请检查网络可用性。'
         exit 1
     fi
-    cd /opt/JimV-N && git checkout ${JIMV_VERSION}
+
+    if [ ${JIMV_VERSION} != 'master' ]; then
+        cd /opt/JimV-N && git checkout ${JIMV_VERSION}
+    fi
 }
 
 function install_dependencies_library() {
