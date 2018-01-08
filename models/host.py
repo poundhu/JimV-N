@@ -413,10 +413,11 @@ class Host(object):
                                     raise RuntimeError('Offline resize disk failure with local storage mode.')
 
                     elif msg['action'] == 'quota':
+                        self.refresh_guest_mapping()
                         if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
 
                             if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
                                 logger.debug(_log)
                                 log_emit.debug(_log)
 
