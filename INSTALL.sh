@@ -167,7 +167,6 @@ function custom_repository_origin() {
     curl -o /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
     yum clean all
     rm -rf /var/cache/yum
-    yum makecache
 }
 
 function clear_up_environment() {

@@ -7,10 +7,7 @@ import sys
 import time
 import traceback
 import Queue
-
-import guestfs
 import redis
-
 import libvirt
 import json
 import jimit as ji
@@ -152,7 +149,7 @@ class Host(object):
                         if msg['uuid'] not in self.guest_mapping_by_uuid:
 
                             if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在宿主机', self.hostname, u'中未找到.'])
+                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
                                 logger.debug(_log)
                                 log_emit.debug(_log)
 
@@ -376,7 +373,7 @@ class Host(object):
                             if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
 
                                 if config['DEBUG']:
-                                    _log = u' '.join([u'uuid', msg['uuid'], u'在宿主机', self.hostname, u'中未找到.'])
+                                    _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
                                     logger.debug(_log)
                                     log_emit.debug(_log)
 
@@ -414,6 +411,29 @@ class Host(object):
                             elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
                                 if not Disk.resize_qemu_image_by_local(image_path=msg['image_path'], size=msg['size']):
                                     raise RuntimeError('Offline resize disk failure with local storage mode.')
+
+                    elif msg['action'] == 'quota':
+                        if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
+
+                            if config['DEBUG']:
+                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                logger.debug(_log)
+                                log_emit.debug(_log)
+
+                            raise RuntimeError('Disk quota failure, because the uuid ' + msg['guest_uuid'] +
+                                               ' not found in current domains.')
+
+                        self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
+                        if not isinstance(self.guest, libvirt.virDomain):
+                            raise RuntimeError('Disk quota failure, because the guest is not a domain.')
+
+                        if not self.guest.isActive():
+                            _log = u'磁盘 ' + msg['uuid'] + u' 所属虚拟机未处于活动状态。'
+                            logger.warning(_log)
+                            log_emit.warn(_log)
+                            continue
+
+                        Guest.quota(guest=self.guest, msg=msg)
 
                 else:
                     _log = u'未支持的 _object：' + msg['_object']
