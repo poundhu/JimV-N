@@ -396,6 +396,8 @@ class Host(object):
                                 if self.guest.blockResize(disk=msg['device_node'], size=msg['size']) != 0:
                                     raise RuntimeError('Online resize disk failure in blockResize method.')
 
+                                Guest.quota(guest=self.guest, msg=msg)
+
                         # 离线磁盘扩容
                         else:
                             if not all([key in msg for key in ['storage_mode', 'dfs_volume', 'image_path']]):
