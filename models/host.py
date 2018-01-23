@@ -21,7 +21,7 @@ import threading
 from jimvn_exception import ConnFailed
 
 from initialize import config, logger, r, log_emit, response_emit, host_event_emit, collection_performance_emit, \
-    thread_status, host_collection_performance_emit, guest_event_emit, q_creating_guest
+    threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest
 from guest import Guest
 from disk import Disk
 from utils import Utils
@@ -94,7 +94,7 @@ class Host(object):
                 log_emit.warn(msg=log)
 
     # 使用时，创建独立的实例来避开 多线程 的问题
-    def guest_operate_engine(self):
+    def instruction_process_engine(self):
         self.init_conn()
 
         ps = r.pubsub(ignore_subscribe_messages=False)
@@ -102,12 +102,12 @@ class Host(object):
 
         while True:
             if Utils.exit_flag:
-                msg = 'Thread guest_operate_engine say bye-bye'
+                msg = 'Thread instruction_process_engine say bye-bye'
                 print msg
                 logger.info(msg=msg)
                 return
 
-            thread_status['guest_operate_engine'] = ji.JITime.now_date_time()
+            threads_status['instruction_process_engine'] = ji.Common.ts()
 
             # noinspection PyBroadException
             try:
@@ -482,6 +482,11 @@ class Host(object):
                 except Queue.Empty as e:
                     pass
 
+                threads_status['guest_creating_progress_report_engine'] = ji.Common.ts()
+
+                # 当有 Guest 被创建时，略微等待一下，避免复制模板的动作还没开始，就开始计算进度。这样会产生找不到镜像路径的异常。
+                time.sleep(1)
+
                 for i, guest in enumerate(list_creating_guest):
 
                     template_path = guest['template_path']
@@ -513,7 +518,7 @@ class Host(object):
 
                     guest_event_emit.creating(uuid=guest['uuid'], progress=int(progress * 90))
 
-                    if progress == 1:
+                    if progress >= 1:
                         del list_creating_guest[i]
 
             except:
@@ -545,7 +550,7 @@ class Host(object):
                 self.disks[disk.mountpoint]['real_device'] = os.path.realpath(disk.device)
 
     # 使用时，创建独立的实例来避开 多线程 的问题
-    def state_report_engine(self):
+    def host_state_report_engine(self):
         """
         计算节点状态上报引擎
         """
@@ -558,12 +563,12 @@ class Host(object):
 
         while True:
             if Utils.exit_flag:
-                msg = 'Thread state_report_engine say bye-bye'
+                msg = 'Thread host_state_report_engine say bye-bye'
                 print msg
                 logger.info(msg=msg)
                 return
 
-            thread_status['state_report_engine'] = ji.JITime.now_date_time()
+            threads_status['host_state_report_engine'] = ji.Common.ts()
 
             # noinspection PyBroadException
             try:
@@ -577,7 +582,8 @@ class Host(object):
                 host_event_emit.heartbeat(message={'node_id': self.node_id, 'cpu': self.cpu, 'memory': self.memory,
                                                    'interfaces': self.interfaces, 'disks': self.disks,
                                                    'system_load': os.getloadavg(), 'boot_time': boot_time,
-                                                   'memory_available': psutil.virtual_memory().available})
+                                                   'memory_available': psutil.virtual_memory().available,
+                                                   'threads_status': threads_status})
 
             except:
                 logger.error(traceback.format_exc())
@@ -749,17 +755,17 @@ class Host(object):
         if data.__len__() > 0:
             collection_performance_emit.disk_io(data=data)
 
-    def collection_performance_process_engine(self):
+    def guest_performance_collection_engine(self):
         self.init_conn()
 
         while True:
             if Utils.exit_flag:
-                msg = 'Thread collection_performance_process_engine say bye-bye'
+                msg = 'Thread guest_performance_collection_engine say bye-bye'
                 print msg
                 logger.info(msg=msg)
                 return
 
-            thread_status['collection_performance_process_engine'] = ji.JITime.now_date_time()
+            threads_status['guest_performance_collection_engine'] = ji.Common.ts()
             time.sleep(1)
             self.ts = ji.Common.ts()
 
@@ -875,17 +881,17 @@ class Host(object):
         if data.__len__() > 0:
             host_collection_performance_emit.disk_usage_io(data=data)
 
-    def host_collection_performance_process_engine(self):
+    def host_performance_collection_engine(self):
         self.init_conn()
 
         while True:
             if Utils.exit_flag:
-                msg = 'Thread host_collection_performance_process_engine say bye-bye'
+                msg = 'Thread host_performance_collection_engine say bye-bye'
                 print msg
                 logger.info(msg=msg)
                 return
 
-            thread_status['host_collection_performance_process_engine'] = ji.JITime.now_date_time()
+            threads_status['host_performance_collection_engine'] = ji.Common.ts()
             time.sleep(1)
             self.ts = ji.Common.ts()
 

@@ -176,5 +176,5 @@ host_collection_performance_emit = HostCollectionPerformanceEmit()
 host_collection_performance_emit.upstream_queue = config['upstream_queue']
 host_collection_performance_emit.r = r
 
-thread_status = dict()
+threads_status = dict()
 
