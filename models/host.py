@@ -107,11 +107,12 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['instruction_process_engine'] = ji.Common.ts()
+            threads_status['instruction_process_engine'] = dict()
+            threads_status['instruction_process_engine']['timestamp'] = ji.Common.ts()
 
             # noinspection PyBroadException
             try:
-                msg = ps.get_message(timeout=1)
+                msg = ps.get_message(timeout=config['engine_cycle_interval'])
 
                 if msg is None or 'data' not in msg or not isinstance(msg['data'], basestring):
                     continue
@@ -476,13 +477,14 @@ class Host(object):
             # noinspection PyBroadException
             try:
                 try:
-                    payload = q_creating_guest.get(timeout=1)
+                    payload = q_creating_guest.get(timeout=config['engine_cycle_interval'])
                     list_creating_guest.append(payload)
                     q_creating_guest.task_done()
                 except Queue.Empty as e:
                     pass
 
-                threads_status['guest_creating_progress_report_engine'] = ji.Common.ts()
+                threads_status['guest_creating_progress_report_engine'] = dict()
+                threads_status['guest_creating_progress_report_engine']['timestamp'] = ji.Common.ts()
 
                 # 当有 Guest 被创建时，略微等待一下，避免复制模板的动作还没开始，就开始计算进度。这样会产生找不到镜像路径的异常。
                 time.sleep(1)
@@ -568,11 +570,12 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['host_state_report_engine'] = ji.Common.ts()
+            threads_status['host_state_report_engine'] = dict()
+            threads_status['host_state_report_engine']['timestamp'] = ji.Common.ts()
 
             # noinspection PyBroadException
             try:
-                time.sleep(2)
+                time.sleep(config['engine_cycle_interval'])
 
                 # 一分钟做一次更新
                 if ji.Common.ts() % 60 == 0:
@@ -765,8 +768,9 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['guest_performance_collection_engine'] = ji.Common.ts()
-            time.sleep(1)
+            threads_status['guest_performance_collection_engine'] = dict()
+            threads_status['guest_performance_collection_engine']['timestamp'] = ji.Common.ts()
+            time.sleep(config['engine_cycle_interval'])
             self.ts = ji.Common.ts()
 
             # noinspection PyBroadException
@@ -891,8 +895,9 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['host_performance_collection_engine'] = ji.Common.ts()
-            time.sleep(1)
+            threads_status['host_performance_collection_engine'] = dict()
+            threads_status['host_performance_collection_engine']['timestamp'] = ji.Common.ts()
+            time.sleep(config['engine_cycle_interval'])
             self.ts = ji.Common.ts()
 
             # noinspection PyBroadException

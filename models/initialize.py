@@ -36,7 +36,8 @@ class Init(object):
         'compute_nodes_hostname_key': 'S:ComputeNodesHostname',
         'DEBUG': False,
         'daemon': True,
-        'pidfile': '/run/jimv/jimvn.pid'
+        'pidfile': '/run/jimv/jimvn.pid',
+        'engine_cycle_interval': 1
     }
 
     @classmethod
