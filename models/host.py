@@ -19,7 +19,7 @@ import threading
 
 from jimvn_exception import ConnFailed
 
-from initialize import config, logger, r, log_emit, response_emit, host_event_emit, collection_performance_emit, \
+from initialize import config, logger, r, log_emit, response_emit, host_event_emit, guest_collection_performance_emit, \
     threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest
 from guest import Guest
 from disk import Disk
@@ -604,7 +604,7 @@ class Host(object):
             logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
 
-    def cpu_memory_performance_report(self):
+    def guest_cpu_memory_performance_report(self):
 
         data = list()
 
@@ -646,9 +646,9 @@ class Host(object):
                 data.append(cpu_memory)
 
         if data.__len__() > 0:
-            collection_performance_emit.cpu_memory(data=data)
+            guest_collection_performance_emit.cpu_memory(data=data)
 
-    def traffic_performance_report(self):
+    def guest_traffic_performance_report(self):
 
         data = list()
 
@@ -700,9 +700,9 @@ class Host(object):
                     data.append(traffic)
 
         if data.__len__() > 0:
-            collection_performance_emit.traffic(data=data)
+            guest_collection_performance_emit.traffic(data=data)
 
-    def disk_io_performance_report(self):
+    def guest_disk_io_performance_report(self):
 
         data = list()
 
@@ -756,7 +756,7 @@ class Host(object):
                     data.append(disk_io)
 
         if data.__len__() > 0:
-            collection_performance_emit.disk_io(data=data)
+            guest_collection_performance_emit.disk_io(data=data)
 
     def guest_performance_collection_engine(self):
         self.init_conn()
@@ -795,9 +795,9 @@ class Host(object):
 
                 self.refresh_guest_mapping()
 
-                self.cpu_memory_performance_report()
-                self.traffic_performance_report()
-                self.disk_io_performance_report()
+                self.guest_cpu_memory_performance_report()
+                self.guest_traffic_performance_report()
+                self.guest_disk_io_performance_report()
 
             except:
                 logger.error(traceback.format_exc())

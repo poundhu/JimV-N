@@ -8,7 +8,7 @@ from status import (
     HostEvent,
     LogLevel,
     ResponseState,
-    CollectionPerformanceDataKind,
+    GuestCollectionPerformanceDataKind,
     HostCollectionPerformanceDataKind,
     OSType
 )
@@ -46,6 +46,6 @@ __copyright__ = '(c) 2017 by James Iter.'
 
 __all__ = [
     'Init', 'Guest', 'Disk', 'Host', 'Utils', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel', 'OSType',
-    'ResponseState', 'CollectionPerformanceDataKind', 'HostCollectionPerformanceDataKind', 'PidFile'
+    'ResponseState', 'GuestCollectionPerformanceDataKind', 'HostCollectionPerformanceDataKind', 'PidFile'
 ]
 

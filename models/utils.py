@@ -12,7 +12,7 @@ import redis
 import time
 
 from models import LogLevel, EmitKind, GuestState, ResponseState, HostEvent
-from models import CollectionPerformanceDataKind, HostCollectionPerformanceDataKind
+from models import GuestCollectionPerformanceDataKind, HostCollectionPerformanceDataKind
 
 
 __author__ = 'James Iter'
@@ -181,22 +181,22 @@ class ResponseEmit(Emit):
                           passback_parameters=passback_parameters)
 
 
-class CollectionPerformanceEmit(Emit):
+class GuestCollectionPerformanceEmit(Emit):
     def __init__(self):
-        super(CollectionPerformanceEmit, self).__init__()
+        super(GuestCollectionPerformanceEmit, self).__init__()
 
     def emit2(self, _type=None, data=None):
-        return self.emit(_kind=EmitKind.collection_performance.value, _type=_type,
+        return self.emit(_kind=EmitKind.guest_collection_performance.value, _type=_type,
                          message={'data': data})
 
     def cpu_memory(self, data=None):
-        return self.emit2(_type=CollectionPerformanceDataKind.cpu_memory.value, data=data)
+        return self.emit2(_type=GuestCollectionPerformanceDataKind.cpu_memory.value, data=data)
 
     def traffic(self, data=None):
-        return self.emit2(_type=CollectionPerformanceDataKind.traffic.value, data=data)
+        return self.emit2(_type=GuestCollectionPerformanceDataKind.traffic.value, data=data)
 
     def disk_io(self, data=None):
-        return self.emit2(_type=CollectionPerformanceDataKind.disk_io.value, data=data)
+        return self.emit2(_type=GuestCollectionPerformanceDataKind.disk_io.value, data=data)
 
 
 class HostCollectionPerformanceEmit(Emit):
