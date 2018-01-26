@@ -40,6 +40,23 @@ class Utils(object):
     def signal_handle(cls, signum=0, frame=None):
         cls.exit_flag = True
 
+    @staticmethod
+    def md5(_str):
+        import hashlib
+        m = hashlib.md5()
+        m.update(_str)
+        return m.hexdigest()
+
+    @classmethod
+    def uuid_by_decimal(cls, _str, _len=16):
+        """
+        :param _str: 欲哈希成数字的字符串
+        :param _len: 返回的位宽
+        :return: 指定位宽度的十进制数字
+        """
+        import string
+        return int(string.atoi(cls.md5(_str=_str), 16).__str__()[:_len])
+
 
 class Emit(object):
 
@@ -47,6 +64,7 @@ class Emit(object):
         # 初始化时，host_event_report_queue 必须由具体实例来指定
         self.upstream_queue = None
         self.hostname = ji.Common.get_hostname()
+        self.node_id = Utils.uuid_by_decimal(_str=self.hostname, _len=16)
         self.r = None
 
     def emit(self, _kind=None, _type=None, message=None):
@@ -57,7 +75,7 @@ class Emit(object):
             return False
 
         msg = json.dumps({'kind': _kind, 'type': _type, 'timestamp': ji.Common.ts(), 'host': self.hostname,
-                          'message': message}, ensure_ascii=False)
+                          'node_id': self.node_id, 'message': message}, ensure_ascii=False)
         try:
             return self.r.rpush(self.upstream_queue, msg)
 

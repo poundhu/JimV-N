@@ -12,7 +12,6 @@ import libvirt
 import json
 import jimit as ji
 import xml.etree.ElementTree as ET
-import uuid
 
 import psutil
 import paramiko
@@ -41,7 +40,8 @@ class Host(object):
         self.guest = None
         self.guest_mapping_by_uuid = dict()
         self.hostname = ji.Common.get_hostname()
-        self.node_id = uuid.getnode()
+        # 根据 hostname 生成的 node_id
+        self.node_id = Utils.uuid_by_decimal(_str=self.hostname, _len=16)
         self.cpu = psutil.cpu_count()
         self.memory = psutil.virtual_memory().total
         self.interfaces = dict()
@@ -133,7 +133,7 @@ class Host(object):
                     log_emit.error(e.message)
                     continue
 
-                if 'hostname' in msg and msg['hostname'] != self.hostname:
+                if 'node_id' in msg and int(msg['node_id']) != self.node_id:
                     continue
 
                 # 下列语句繁琐写法如 <code>if 'action' not in msg or 'uuid' not in msg:</code>
