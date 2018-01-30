@@ -11,7 +11,7 @@
 
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
-export COMPUTE_NODES_HOSTNAME_KEY='S:ComputeNodesHostname'
+export HOSTS_INFO='H:HostsInfo'
 export VM_NETWORK_KEY='vm_network'
 export VM_NETWORK_MANAGE_KEY='vm_manage_network'
 export CPU_COUNT=`grep '^processor' /proc/cpuinfo | wc -l`
@@ -108,6 +108,7 @@ function check_precondition() {
     export DNS1=`nslookup 127.0.0.1 | grep Server | grep -Eo '([0-9]*\.){3}[0-9]*'`
     export NIC=`ifconfig | grep ${SERVER_IP} -B 1 | head -1 | cut -d ':' -f 1`
     export HOST_NAME=`grep ${SERVER_IP} /etc/hosts | awk '{ print $2; }'`
+    export NODE_ID=`python -c "import hashlib, string; m = hashlib.md5(); m.update('${HOST_NAME}'); print string.atoi(m.hexdigest(), 16).__str__()[:16]"`
 
     if [ 'x_'${HOST_NAME} = 'x_' ]; then
         echo "计算节点 IP 地址未在 /etc/hosts 文件中被发现。请完整安装、初始化 JimV-C 后，再安装 JimV-N。"
@@ -143,7 +144,7 @@ function check_precondition() {
         export VM_NETWORK_MANAGE=`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw HGET ${GLOBAL_CONFIG_KEY} ${VM_NETWORK_MANAGE_KEY}`
     fi
 
-    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw SISMEMBER ${COMPUTE_NODES_HOSTNAME_KEY} ${HOST_NAME}`
+    REDIS_RESPONSE='x_'`redis-cli -h ${REDIS_HOST} -a ${REDIS_PSWD} -p ${REDIS_PORT} --raw HEXISTS ${HOSTS_INFO} ${NODE_ID}`
     if [ ${REDIS_RESPONSE} != 'x_0' ]; then
         echo "计算节点 ${HOST_NAME} 已存在，请重新指定 --hostname 的值，或清除冲突的计算节点。"
         exit 1
