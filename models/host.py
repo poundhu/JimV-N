@@ -187,7 +187,9 @@ class Host(object):
                         if not self.guest.isActive():
 
                             guest = Guest()
-                            guest.execute_boot_jobs(guest=self.guest, boot_jobs=msg['boot_jobs'])
+                            guest.execute_os_template_initialize_operates(
+                                guest=self.guest,
+                                os_template_initialize_operates=msg['os_template_initialize_operates'])
 
                             if self.guest.create() != 0:
                                 raise RuntimeError('Guest boot failure.')

@@ -15,7 +15,7 @@ import libvirt_qemu
 import json
 
 from initialize import logger, log_emit, guest_event_emit, q_creating_guest, response_emit
-from models.status import OperateRuleKind, StorageMode, OSType
+from models.status import OSTemplateInitializeOperateKind, StorageMode
 from disk import Disk
 
 
@@ -102,11 +102,11 @@ class Guest(object):
 
         return True
 
-    def execute_boot_jobs(self, guest=None, boot_jobs=None, os_type=None):
-        if not isinstance(boot_jobs, list):
-            raise ValueError('The boot_jobs must be a list.')
+    def execute_os_template_initialize_operates(self, guest=None, os_template_initialize_operates=None, os_type=None):
+        if not isinstance(os_template_initialize_operates, list):
+            raise ValueError('The os_template_initialize_operates must be a list.')
 
-        if boot_jobs.__len__() < 1:
+        if os_template_initialize_operates.__len__() < 1:
             return True
 
         self.xml = guest.XMLDesc()
@@ -129,29 +129,29 @@ class Guest(object):
         self.g.launch()
         self.g.mount(self.g.inspect_os()[0], '/')
 
-        for boot_job in boot_jobs:
-            if boot_job['kind'] == OperateRuleKind.cmd.value:
+        for os_template_initialize_operate in os_template_initialize_operates:
+            if os_template_initialize_operate['kind'] == OSTemplateInitializeOperateKind.cmd.value:
 
-                if os_type == OSType.windows.value:
+                if str(os_type).lower().find('windows') >= 0:
                     continue
 
-                self.g.sh(boot_job['command'])
+                self.g.sh(os_template_initialize_operate['command'])
 
-            elif boot_job['kind'] == OperateRuleKind.write_file.value:
+            elif os_template_initialize_operate['kind'] == OSTemplateInitializeOperateKind.write_file.value:
 
-                content = boot_job['content']
-                if os_type == OSType.windows.value:
+                content = os_template_initialize_operate['content']
+                if str(os_type).lower().find('windows') >= 0:
                     content = content.replace('\r', '').replace('\n', '\r\n')
 
-                self.g.write(boot_job['path'], content)
+                self.g.write(os_template_initialize_operate['path'], content)
 
-            elif boot_job['kind'] == OperateRuleKind.append_file.value:
+            elif os_template_initialize_operate['kind'] == OSTemplateInitializeOperateKind.append_file.value:
 
-                content = boot_job['content']
-                if os_type == OSType.windows.value:
+                content = os_template_initialize_operate['content']
+                if str(os_type).lower().find('windows') >= 0:
                     content = content.replace('\r', '').replace('\n', '\r\n')
 
-                self.g.write_append(boot_job['path'], content)
+                self.g.write_append(os_template_initialize_operate['path'], content)
 
             else:
                 continue
@@ -263,7 +263,7 @@ class Guest(object):
             Guest.storage_mode = msg['storage_mode']
 
             guest = Guest(uuid=msg['uuid'], name=msg['name'], template_path=msg['template_path'],
-                          disk=msg['disk'], xml=msg['xml'])
+                          disk=msg['disks'][0], xml=msg['xml'])
 
             if Guest.storage_mode == StorageMode.glusterfs.value:
                 Guest.dfs_volume = msg['dfs_volume']
@@ -297,8 +297,9 @@ class Guest(object):
                 disk_info = Disk.disk_info_by_local(image_path=guest.system_image_path)
 
             # 由该线程最顶层的异常捕获机制，处理其抛出的异常
-            guest.execute_boot_jobs(guest=conn.lookupByUUIDString(uuidstr=guest.uuid),
-                                    boot_jobs=msg['boot_jobs'], os_type=msg['os_type'])
+            guest.execute_os_template_initialize_operates(
+                guest=conn.lookupByUUIDString(uuidstr=guest.uuid),
+                os_template_initialize_operates=msg['os_template_initialize_operates'], os_type=msg['os_type'])
 
             extend_data = dict()
             extend_data.update({'disk_info': disk_info})

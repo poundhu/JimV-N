@@ -9,8 +9,7 @@ from status import (
     LogLevel,
     ResponseState,
     GuestCollectionPerformanceDataKind,
-    HostCollectionPerformanceDataKind,
-    OSType
+    HostCollectionPerformanceDataKind
 )
 
 from pidfile import (
@@ -45,7 +44,7 @@ __copyright__ = '(c) 2017 by James Iter.'
 
 
 __all__ = [
-    'Init', 'Guest', 'Disk', 'Host', 'Utils', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel', 'OSType',
+    'Init', 'Guest', 'Disk', 'Host', 'Utils', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel',
     'ResponseState', 'GuestCollectionPerformanceDataKind', 'HostCollectionPerformanceDataKind', 'PidFile'
 ]
 
