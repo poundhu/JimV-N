@@ -238,6 +238,10 @@ class Host(object):
                             except OSError:
                                 pass
 
+                    elif msg['action'] == 'reset_password':
+                        if self.guest.setUserPassword(msg['user'], msg['password']) != 0:
+                            raise RuntimeError('Guest reset password failure.')
+
                     elif msg['action'] == 'attach_disk':
 
                         if 'xml' not in msg:
