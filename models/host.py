@@ -186,11 +186,6 @@ class Host(object):
                     elif msg['action'] == 'boot':
                         if not self.guest.isActive():
 
-                            guest = Guest()
-                            guest.execute_os_template_initialize_operates(
-                                guest=self.guest,
-                                os_template_initialize_operates=msg['os_template_initialize_operates'])
-
                             if self.guest.create() != 0:
                                 raise RuntimeError('Guest boot failure.')
 
@@ -270,6 +265,17 @@ class Host(object):
 
                         if self.guest.detachDeviceFlags(xml=msg['xml'], flags=flags) != 0:
                             raise RuntimeError('Detach disk failure.')
+
+                    elif msg['action'] == 'update_ssh_key':
+                        if not self.guest.isActive():
+                            _log = u'欲更新 SSH-KEY 的目标虚拟机未处于活动状态。'
+                            logger.warning(_log)
+                            log_emit.warn(_log)
+                            continue
+
+                        ret = Guest.update_ssh_key(guest=self.guest, msg=msg)
+
+                        logger.info(json.dumps(ret, ensure_ascii=False))
 
                     elif msg['action'] == 'migrate':
 

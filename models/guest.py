@@ -344,3 +344,59 @@ class Guest(object):
                 }),
                 libvirt_qemu.VIR_DOMAIN_QEMU_MONITOR_COMMAND_DEFAULT)
 
+    @staticmethod
+    def update_ssh_key(guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                'execute': 'guest-exec',
+                'arguments': {
+                    'path': 'mkdir',
+                    'capture-output': False,
+                    'arg': [
+                        '-p',
+                        '/root/.ssh'
+                    ]
+                }
+            }),
+            3,
+            libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+        redirection_symbol = '>'
+
+        ret_s = list()
+
+        for i, ssh_key in enumerate(msg['ssh_keys']):
+            if i > 0:
+                redirection_symbol = '>>'
+
+            ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                    'execute': 'guest-exec',
+                    'arguments': {
+                        'path': '/bin/sh',
+                        'capture-output': True,
+                        'arg': [
+                            '-c',
+                            ' '.join(['echo', '"' + ssh_key + '"', redirection_symbol, '/root/.ssh/authorized_keys'])
+                        ]
+                    }
+                }),
+                3,
+                libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+            ret = json.loads(ret)
+
+            ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                    'execute': 'guest-exec-status',
+                    'arguments': {
+                        'pid': ret['return']['pid']
+                    }
+                }),
+                3,
+                libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+            ret_s.append(json.loads(ret))
+
+        return ret_s
+
