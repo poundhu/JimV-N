@@ -155,6 +155,7 @@ function check_precondition() {
 }
 
 function set_ntp() {
+    yum install ntp -y
     timedatectl set-timezone Asia/Shanghai
     timedatectl set-ntp true
     timedatectl status

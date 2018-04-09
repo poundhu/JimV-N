@@ -451,6 +451,49 @@ class Host(object):
 
                         Guest.quota(guest=self.guest, msg=msg)
 
+                elif msg['_object'] == 'snapshot':
+                    if msg['action'] == 'create':
+                        self.refresh_guest_mapping()
+                        if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
+
+                            if config['DEBUG']:
+                                _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                logger.debug(_log)
+                                log_emit.debug(_log)
+
+                            raise RuntimeError('Snapshot create failure, because the uuid ' + msg['guest_uuid'] +
+                                               ' not found in current domains.')
+
+                        self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
+                        if not isinstance(self.guest, libvirt.virDomain):
+                            raise RuntimeError('Snapshot create failure, because the guest is not a domain.')
+
+                        t = threading.Thread(target=Guest.create_snapshot, args=(self.guest, msg))
+                        t.setDaemon(False)
+                        t.start()
+                        continue
+
+                    elif msg['action'] == 'delete':
+                        self.refresh_guest_mapping()
+                        if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
+
+                            if config['DEBUG']:
+                                _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                logger.debug(_log)
+                                log_emit.debug(_log)
+
+                            raise RuntimeError('Snapshot delete failure, because the uuid ' + msg['guest_uuid'] +
+                                               ' not found in current domains.')
+
+                        self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
+                        if not isinstance(self.guest, libvirt.virDomain):
+                            raise RuntimeError('Snapshot delete failure, because the guest is not a domain.')
+
+                        t = threading.Thread(target=Guest.delete_snapshot, args=(self.guest, msg))
+                        t.setDaemon(False)
+                        t.start()
+                        continue
+
                 else:
                     _log = u'未支持的 _object：' + msg['_object']
                     logger.error(_log)

@@ -400,3 +400,61 @@ class Guest(object):
 
         return ret_s
 
+    @staticmethod
+    def create_snapshot(guest=None, msg=None):
+        extend_data = dict()
+
+        try:
+            assert isinstance(guest, libvirt.virDomain)
+            assert isinstance(msg, dict)
+            snap_xml = """
+                <domainsnapshot>
+                </domainsnapshot>
+            """
+
+            snap_flags = 0
+            snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
+
+            ret = guest.snapshotCreateXML(xmlDesc=snap_xml, flags=snap_flags)
+
+            parent_id = ''
+
+            try:
+                parent = ret.getParent()
+                parent_id = parent.getName()
+
+            except libvirt.libvirtError, e:
+                if e.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN_SNAPSHOT:
+                    parent_id = '-'
+
+            extend_data.update({'snapshot_id': ret.getName(), 'parent_id': parent_id, 'xml': ret.getXMLDesc()})
+
+            response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+        except:
+            logger.error(traceback.format_exc())
+            log_emit.error(traceback.format_exc())
+            response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+    @staticmethod
+    def delete_snapshot(guest=None, msg=None):
+        extend_data = dict()
+
+        try:
+            assert isinstance(guest, libvirt.virDomain)
+            assert isinstance(msg, dict)
+
+            snapshot = guest.snapshotLookupByName(name=msg['snapshot_id'])
+            snapshot.delete()
+
+            response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+        except:
+            logger.error(traceback.format_exc())
+            log_emit.error(traceback.format_exc())
+            response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
