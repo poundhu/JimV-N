@@ -454,17 +454,17 @@ class Host(object):
                 elif msg['_object'] == 'snapshot':
                     if msg['action'] == 'create':
                         self.refresh_guest_mapping()
-                        if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
+                        if msg['uuid'] not in self.guest_mapping_by_uuid:
 
                             if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
                                 logger.debug(_log)
                                 log_emit.debug(_log)
 
-                            raise RuntimeError('Snapshot create failure, because the uuid ' + msg['guest_uuid'] +
+                            raise RuntimeError('Snapshot create failure, because the uuid ' + msg['uuid'] +
                                                ' not found in current domains.')
 
-                        self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
+                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
                         if not isinstance(self.guest, libvirt.virDomain):
                             raise RuntimeError('Snapshot create failure, because the guest is not a domain.')
 
@@ -475,17 +475,17 @@ class Host(object):
 
                     elif msg['action'] == 'delete':
                         self.refresh_guest_mapping()
-                        if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
+                        if msg['uuid'] not in self.guest_mapping_by_uuid:
 
                             if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
                                 logger.debug(_log)
                                 log_emit.debug(_log)
 
-                            raise RuntimeError('Snapshot delete failure, because the uuid ' + msg['guest_uuid'] +
+                            raise RuntimeError('Snapshot delete failure, because the uuid ' + msg['uuid'] +
                                                ' not found in current domains.')
 
-                        self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
+                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
                         if not isinstance(self.guest, libvirt.virDomain):
                             raise RuntimeError('Snapshot delete failure, because the guest is not a domain.')
 
