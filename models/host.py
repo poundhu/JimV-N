@@ -494,6 +494,27 @@ class Host(object):
                         t.start()
                         continue
 
+                    elif msg['action'] == 'revert':
+                        self.refresh_guest_mapping()
+                        if msg['uuid'] not in self.guest_mapping_by_uuid:
+
+                            if config['DEBUG']:
+                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                                logger.debug(_log)
+                                log_emit.debug(_log)
+
+                            raise RuntimeError('Snapshot revert failure, because the uuid ' + msg['uuid'] +
+                                               ' not found in current domains.')
+
+                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
+                        if not isinstance(self.guest, libvirt.virDomain):
+                            raise RuntimeError('Snapshot revert failure, because the guest is not a domain.')
+
+                        t = threading.Thread(target=Guest.revert_snapshot, args=(self.guest, msg))
+                        t.setDaemon(False)
+                        t.start()
+                        continue
+
                 else:
                     _log = u'未支持的 _object：' + msg['_object']
                     logger.error(_log)

@@ -5,6 +5,7 @@
 import os
 import shutil
 import traceback
+import jimit as ji
 
 import guestfs
 import libvirt
@@ -448,6 +449,52 @@ class Guest(object):
 
             snapshot = guest.snapshotLookupByName(name=msg['snapshot_id'])
             snapshot.delete()
+
+            response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+        except:
+            logger.error(traceback.format_exc())
+            log_emit.error(traceback.format_exc())
+            response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+    @staticmethod
+    def revert_snapshot(guest=None, msg=None):
+        extend_data = dict()
+
+        try:
+            assert isinstance(guest, libvirt.virDomain)
+            assert isinstance(msg, dict)
+
+            snap_flags = 0
+            snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_REVERT_FORCE
+            snapshot = guest.snapshotLookupByName(name=msg['snapshot_id'])
+
+            try:
+                guest.revertToSnapshot(snap=snapshot, flags=0)
+
+            except libvirt.libvirtError, e:
+                # 给予一次重新恢复的机会
+                if e.get_error_code() == libvirt.VIR_ERR_SYSTEM_ERROR:
+                    guest.revertToSnapshot(snap=snapshot, flags=snap_flags)
+
+            # 如果恢复后的 Guest 为 Running 状态，则同步其系统时间。
+            if guest.isActive():
+                # https://qemu.weilnetz.de/doc/qemu-ga-ref.html#index-guest_002dset_002dtime
+                try:
+                    libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                            'execute': 'guest-set-time',
+                            'arguments': {
+                                'time': int(ji.Common.ts() * (10**9))
+                            }
+                        }),
+                        3,
+                        libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+                except libvirt.libvirtError, e:
+                    logger.error(e.message)
+                    log_emit.error(e.message)
 
             response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
