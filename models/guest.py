@@ -6,6 +6,10 @@ import os
 import shutil
 import traceback
 import jimit as ji
+import subprocess
+import signal
+import time
+import re
 
 import guestfs
 import libvirt
@@ -16,6 +20,7 @@ import libvirt_qemu
 import json
 
 from initialize import logger, log_emit, guest_event_emit, q_creating_guest, response_emit
+from models.jimvn_exception import CommandExecFailed
 from models.status import OSTemplateInitializeOperateKind, StorageMode
 from disk import Disk
 
@@ -505,3 +510,66 @@ class Guest(object):
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
+    @staticmethod
+    def convert_snapshot(msg=None):
+
+        pattern_progress = re.compile(r'\((\d+(\.\d+)?)/100%\)')
+
+        extend_data = dict()
+
+        try:
+            assert isinstance(msg, dict)
+
+            snapshot_path = msg['snapshot_path']
+            template_path = msg['template_path']
+
+            if msg['storage_mode'] == StorageMode.glusterfs.value:
+
+                Guest.dfs_volume = msg['dfs_volume']
+                Guest.init_gfapi()
+
+                if not Guest.gf.isdir(os.path.dirname(template_path)):
+                    Guest.gf.makedirs(os.path.dirname(template_path), 0755)
+
+                snapshot_path = '/'.join(['gluster://127.0.0.1', msg['dfs_volume'], snapshot_path])
+                template_path = '/'.join(['gluster://127.0.0.1', msg['dfs_volume'], template_path])
+
+            elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
+                pass
+
+            else:
+                raise ValueError('Unknown value of storage_mode.')
+
+            cmd = ' '.join(['/usr/bin/qemu-img', 'convert', '-O', 'qcow2', '-s', msg['snapshot_id'],
+                            snapshot_path, template_path])
+
+            qemu_img_convert = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            while qemu_img_convert.returncode is None:
+                line = qemu_img_convert.stdout.readline()
+
+                p = pattern_progress.match(line.strip())
+
+                if p is not None:
+                    fields = p.groups()
+                    guest_event_emit.snapshot_converting(uuid=msg['uuid'],
+                                                         os_template_image_id=msg['os_template_image_id'],
+                                                         progress=int(fields[0].split('.')[0]))
+
+                qemu_img_convert.send_signal(signal.SIGUSR1)
+                time.sleep(0.5)
+                qemu_img_convert.poll()
+
+            if qemu_img_convert.returncode != 0:
+                log = u'创建自定义模板失败，命令执行退出异常。'
+                logger.error(msg=log)
+                log_emit.error(msg=log)
+                raise CommandExecFailed(log)
+
+            response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+        except:
+            logger.error(traceback.format_exc())
+            log_emit.error(traceback.format_exc())
+            response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))

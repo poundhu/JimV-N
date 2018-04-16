@@ -47,6 +47,8 @@ class GuestState(IntEnum):
     migrating = 8
     update = 9
     creating = 10
+    snapshot_converting = 11
+    dirty = 255
 
 
 class HostEvent(IntEnum):
