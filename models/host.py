@@ -452,21 +452,24 @@ class Host(object):
                         Guest.quota(guest=self.guest, msg=msg)
 
                 elif msg['_object'] == 'snapshot':
+
+                    self.refresh_guest_mapping()
+                    if msg['uuid'] not in self.guest_mapping_by_uuid:
+
+                        if config['DEBUG']:
+                            _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
+                            logger.debug(_log)
+                            log_emit.debug(_log)
+
+                            raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the uuid ' +
+                                               msg['uuid'] + ' not found in current domains.')
+
+                    self.guest = self.guest_mapping_by_uuid[msg['uuid']]
+
+                    if not isinstance(self.guest, libvirt.virDomain):
+                        raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the guest is not a domain.')
+
                     if msg['action'] == 'create':
-                        self.refresh_guest_mapping()
-                        if msg['uuid'] not in self.guest_mapping_by_uuid:
-
-                            if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                logger.debug(_log)
-                                log_emit.debug(_log)
-
-                            raise RuntimeError('Snapshot create failure, because the uuid ' + msg['uuid'] +
-                                               ' not found in current domains.')
-
-                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-                        if not isinstance(self.guest, libvirt.virDomain):
-                            raise RuntimeError('Snapshot create failure, because the guest is not a domain.')
 
                         t = threading.Thread(target=Guest.create_snapshot, args=(self.guest, msg))
                         t.setDaemon(False)
@@ -474,20 +477,6 @@ class Host(object):
                         continue
 
                     elif msg['action'] == 'delete':
-                        self.refresh_guest_mapping()
-                        if msg['uuid'] not in self.guest_mapping_by_uuid:
-
-                            if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                logger.debug(_log)
-                                log_emit.debug(_log)
-
-                            raise RuntimeError('Snapshot delete failure, because the uuid ' + msg['uuid'] +
-                                               ' not found in current domains.')
-
-                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-                        if not isinstance(self.guest, libvirt.virDomain):
-                            raise RuntimeError('Snapshot delete failure, because the guest is not a domain.')
 
                         t = threading.Thread(target=Guest.delete_snapshot, args=(self.guest, msg))
                         t.setDaemon(False)
@@ -495,20 +484,6 @@ class Host(object):
                         continue
 
                     elif msg['action'] == 'revert':
-                        self.refresh_guest_mapping()
-                        if msg['uuid'] not in self.guest_mapping_by_uuid:
-
-                            if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                logger.debug(_log)
-                                log_emit.debug(_log)
-
-                            raise RuntimeError('Snapshot revert failure, because the uuid ' + msg['uuid'] +
-                                               ' not found in current domains.')
-
-                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-                        if not isinstance(self.guest, libvirt.virDomain):
-                            raise RuntimeError('Snapshot revert failure, because the guest is not a domain.')
 
                         t = threading.Thread(target=Guest.revert_snapshot, args=(self.guest, msg))
                         t.setDaemon(False)
@@ -516,25 +491,29 @@ class Host(object):
                         continue
 
                     elif msg['action'] == 'convert':
-                        self.refresh_guest_mapping()
-                        if msg['uuid'] not in self.guest_mapping_by_uuid:
-
-                            if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                logger.debug(_log)
-                                log_emit.debug(_log)
-
-                            raise RuntimeError('Snapshot convert failure, because the uuid ' + msg['uuid'] +
-                                               ' not found in current domains.')
-
-                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-                        if not isinstance(self.guest, libvirt.virDomain):
-                            raise RuntimeError('Snapshot convert failure, because the guest is not a domain.')
 
                         t = threading.Thread(target=Guest.convert_snapshot, args=(msg,))
                         t.setDaemon(False)
                         t.start()
                         continue
+
+                elif msg['_object'] == 'os_template_image':
+
+                    if msg['action'] == 'delete':
+                        if msg['storage_mode'] == StorageMode.glusterfs.value:
+                            Guest.dfs_volume = msg['dfs_volume']
+                            Guest.init_gfapi()
+
+                            try:
+                                Guest.gf.remove(msg['template_path'])
+                            except OSError:
+                                pass
+
+                        elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
+                            try:
+                                os.remove(msg['template_path'])
+                            except OSError:
+                                pass
 
                 else:
                     _log = u'未支持的 _object：' + msg['_object']
