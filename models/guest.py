@@ -10,6 +10,7 @@ import subprocess
 import signal
 import time
 import re
+import fcntl
 
 import guestfs
 import libvirt
@@ -544,19 +545,29 @@ class Guest(object):
                             snapshot_path, template_path])
 
             qemu_img_convert = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            fcntl.fcntl(qemu_img_convert.stdout, fcntl.F_SETFL,
+                        fcntl.fcntl(qemu_img_convert.stdout, fcntl.F_GETFL) | os.O_NONBLOCK)
+
             while qemu_img_convert.returncode is None:
-                line = qemu_img_convert.stdout.readline()
+                line = None
 
-                p = pattern_progress.match(line.strip())
+                try:
+                    line = qemu_img_convert.stdout.readline()
+                except IOError as e:
+                    pass
 
-                if p is not None:
-                    fields = p.groups()
-                    guest_event_emit.snapshot_converting(uuid=msg['uuid'],
-                                                         os_template_image_id=msg['os_template_image_id'],
-                                                         progress=int(fields[0].split('.')[0]))
+                if line is not None:
+                    p = pattern_progress.match(line.strip())
 
-                qemu_img_convert.send_signal(signal.SIGUSR1)
+                    if p is not None:
+                        fields = p.groups()
+                        guest_event_emit.snapshot_converting(uuid=msg['uuid'],
+                                                             os_template_image_id=msg['os_template_image_id'],
+                                                             progress=int(fields[0].split('.')[0]))
+
                 time.sleep(0.5)
+                qemu_img_convert.send_signal(signal.SIGUSR1)
                 qemu_img_convert.poll()
 
             if qemu_img_convert.returncode != 0:
