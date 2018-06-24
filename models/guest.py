@@ -584,3 +584,36 @@ class Guest(object):
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+    @staticmethod
+    def allocate_bandwidth(guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+        extend_data = dict()
+
+        """
+        https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainModificationImpact
+        """
+
+        try:
+            bandwidth = msg['bandwidth'] / 1000 / 8
+            mac = ET.fromstring(guest.XMLDesc()).findall('devices/interface')[0].find('mac').attrib['address']
+
+            interface_bandwidth = guest.interfaceParameters(mac, 0)
+            interface_bandwidth['inbound.average'] = bandwidth
+            interface_bandwidth['outbound.average'] = bandwidth
+
+            guest.setInterfaceParameters(mac, interface_bandwidth, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+
+            if guest.isActive():
+                guest.setInterfaceParameters(mac, interface_bandwidth, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+
+            response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+        except:
+            logger.error(traceback.format_exc())
+            log_emit.error(traceback.format_exc())
+            response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+

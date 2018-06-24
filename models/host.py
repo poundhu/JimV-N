@@ -277,6 +277,12 @@ class Host(object):
 
                         logger.info(json.dumps(ret, ensure_ascii=False))
 
+                    elif msg['action'] == 'allocate_bandwidth':
+                        t = threading.Thread(target=Guest.allocate_bandwidth, args=(self.guest, msg))
+                        t.setDaemon(False)
+                        t.start()
+                        continue
+
                     elif msg['action'] == 'migrate':
 
                         # duri like qemu+ssh://destination_host/system

@@ -189,7 +189,7 @@ function install_libvirt_and_libguestfish() {
     yum install libvirt libvirt-devel python-devel centos-release-qemu-ev -y
     yum install ocaml-findlib-devel ocaml-gettext-devel ocaml-ounit-devel ocaml-libvirt-devel ocaml-hivex-devel ocaml-ocamldoc -y
     yum install hivex-devel python-hivex gperf genisoimage flex bison ncurses-devel pcre-devel augeas-devel supermin5 cpio xz -y
-    yum install libxml2 yajl-devel file-devel bash-completion fuse-devel python-devel gcc qemu-kvm-ev -y
+    yum install libxml2 yajl-devel file-devel bash-completion fuse-devel python-devel gcc qemu-kvm-ev qemu seabios -y
     yum install readline-devel libconfig-devel ntfs-3g-devel -y
     ln -s /usr/bin/supermin5 /usr/bin/supermin
     curl ${LIBGUESTFISH_URL} -o ${LIBGUESTFISH_FILENAME}
