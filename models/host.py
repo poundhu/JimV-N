@@ -14,6 +14,7 @@ import jimit as ji
 import xml.etree.ElementTree as ET
 
 import psutil
+import cpuinfo
 import paramiko
 import threading
 
@@ -43,6 +44,7 @@ class Host(object):
         # 根据 hostname 生成的 node_id
         self.node_id = Utils.uuid_by_decimal(_str=self.hostname, _len=16)
         self.cpu = psutil.cpu_count()
+        self.cpuinfo = cpuinfo.get_cpu_info()
         self.memory = psutil.virtual_memory().total
         self.interfaces = dict()
         self.disks = dict()
@@ -664,7 +666,8 @@ class Host(object):
                     self.update_interfaces()
                     self.update_disks()
 
-                host_event_emit.heartbeat(message={'node_id': self.node_id, 'cpu': self.cpu, 'memory': self.memory,
+                host_event_emit.heartbeat(message={'node_id': self.node_id, 'cpu': self.cpu, 'cpuinfo': self.cpuinfo,
+                                                   'memory': self.memory,
                                                    'interfaces': self.interfaces, 'disks': self.disks,
                                                    'system_load': os.getloadavg(), 'boot_time': boot_time,
                                                    'memory_available': psutil.virtual_memory().available,
