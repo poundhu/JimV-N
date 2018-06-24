@@ -75,8 +75,7 @@ function check_precondition() {
     esac
 
     if [ `egrep -c '(vmx|svm)' /proc/cpuinfo` -eq 0 ]; then
-        echo "需要 CPU 支持 vmx 或 svm, 该 CPU 不支持。"
-        exit 1
+        echo "警告：请检查 CPU 是否开启 VT 技术。未开启 VT 技术的计算节点，将以 QEMU 模式运行虚拟机。"
     fi
 
     if [ ! ${JIMV_VERSION} ] || [ ${#JIMV_VERSION} -eq 0 ]; then
