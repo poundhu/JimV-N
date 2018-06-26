@@ -10,6 +10,9 @@
 #
 
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
+export JIMVN_REPOSITORY_URL='https://github.com/jamesiter/JimV-N.git'
+export JIMVN_REPOSITORY_URL_CN='https://gitee.com/jimit/JimV-N.git'
+export COUNTRY=`curl http://iit.im/ip/country`
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export HOSTS_INFO='H:HostsInfo'
 export VM_NETWORK_KEY='vm_network'
@@ -19,6 +22,9 @@ export LIBGUESTFISH_URL='http://download.libguestfs.org/1.36-stable/libguestfs-1
 export LIBGUESTFISH_FILENAME=`basename ${LIBGUESTFISH_URL}`
 export LIBGUESTFISH_DIRNAME=`basename -s .tar.gz ${LIBGUESTFISH_FILENAME}`
 
+if [ ${COUNTRY} = 'CN' ]; then
+    export JIMVN_REPOSITORY_URL=${JIMVN_REPOSITORY_URL_CN}
+fi
 
 ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,version:,help -n 'INSTALL.sh' -- "$@"`
 
@@ -279,7 +285,7 @@ function start_libvirtd() {
 }
 
 function clone_and_checkout_JimVN() {
-    git clone https://github.com/jamesiter/JimV-N.git /opt/JimV-N
+    git clone ${JIMVN_REPOSITORY_URL} /opt/JimV-N
     if [ ! $? -eq 0 ]; then
         echo '克隆 JimV-N 失败，请检查网络可用性。'
         exit 1
