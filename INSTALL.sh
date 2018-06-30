@@ -19,11 +19,14 @@ export VM_NETWORK_KEY='vm_network'
 export VM_NETWORK_MANAGE_KEY='vm_manage_network'
 export CPU_COUNT=`grep '^processor' /proc/cpuinfo | wc -l`
 export LIBGUESTFISH_URL='http://download.libguestfs.org/1.36-stable/libguestfs-1.36.11.tar.gz'
+export LIBGUESTFISH_URL_CN ='http://jimvlib.iit.im/libguestfs-1.36.11.tar.gz'
 export LIBGUESTFISH_FILENAME=`basename ${LIBGUESTFISH_URL}`
 export LIBGUESTFISH_DIRNAME=`basename -s .tar.gz ${LIBGUESTFISH_FILENAME}`
+export SHOW_WARNING_VTX=false
 
 if [ ${COUNTRY} = 'CN' ]; then
     export JIMVN_REPOSITORY_URL=${JIMVN_REPOSITORY_URL_CN}
+    export LIBGUESTFISH_URL=${LIBGUESTFISH_URL_CN}
 fi
 
 ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,version:,help -n 'INSTALL.sh' -- "$@"`
@@ -81,7 +84,7 @@ function check_precondition() {
     esac
 
     if [ `egrep -c '(vmx|svm)' /proc/cpuinfo` -eq 0 ]; then
-        echo "警告：请检查 CPU 是否开启 VT 技术。未开启 VT 技术的计算节点，将以 QEMU 模式运行虚拟机。"
+        export SHOW_WARNING_VTX=true
     fi
 
     if [ ! ${JIMV_VERSION} ] || [ ${#JIMV_VERSION} -eq 0 ]; then
@@ -313,6 +316,11 @@ function display_summary_information() {
     echo "=== 信息汇总"
     echo "==========="
     echo
+
+    if [ ${SHOW_WARNING_VTX} = true ]; then
+        echo "警告：请检查 CPU 是否开启 VT 技术。未开启 VT 技术的计算节点，将以 QEMU 模式运行虚拟机。"
+    fi
+
     echo "现在可以通过命令 'cd /opt/JimV-N && ./startup.sh' 启动运行 JimV-N。"
 }
 
