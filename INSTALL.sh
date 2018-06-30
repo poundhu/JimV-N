@@ -194,6 +194,7 @@ function clear_up_environment() {
 
 function install_libvirt_and_libguestfish() {
     # 安装 libvirt
+    uname -m | grep -q 'x86_64'  && echo 'centos' >/etc/yum/vars/contentdir || echo 'altarch' >/etc/yum/vars/contentdir
     yum install libvirt libvirt-devel python-devel centos-release-qemu-ev -y
     yum install ocaml-findlib-devel ocaml-gettext-devel ocaml-ounit-devel ocaml-libvirt-devel ocaml-hivex-devel ocaml-ocamldoc -y
     yum install hivex-devel python-hivex gperf genisoimage flex bison ncurses-devel pcre-devel augeas-devel supermin5 cpio xz -y
