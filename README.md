@@ -6,7 +6,6 @@
 
 # 目录
 - [项目描述](#项目描述)
-- [未来计划](#未来计划)
 - [安装](#安装)
     - [JimV-N 快速安装](#jimv-n-快速安装)
     - [[JimV-N 手动安装](docs/install.md)](#jimv-n-手动安装)
@@ -19,11 +18,6 @@
 > JimV 的计算节点。
 
 
-## 未来计划
-
->* 参照 VMWare ESXi，做一个安装、 配置的 Shell 控制台
-
-
 ## 安装
 
 ### JimV-N 快速安装
@@ -34,19 +28,13 @@
     ``` bash
     # 避免各种意外的 ssh 断开。如果遇到因网络问题而断开的意外，那么再次连接后，使用 screen -r 可以恢复到断开前的终端环境。
     yum install screen -y
-    screen
     echo 'termcapinfo xterm* ti@:te@' > .screenrc
-    curl https://raw.githubusercontent.com/jamesiter/JimV-N/master/INSTALL.sh -o INSTALL.sh
-    bash INSTALL.sh --redis_host {x.x.x.x} --redis_password {password} --redis_port {port}
+    screen
+    curl https://raw.githubusercontent.com/jamesiter/JimV-N/master/INSTALL.sh | bash -s -- --redis_host {x.x.x.x} --redis_password {password} --redis_port {port}
     ```
 3. 启动 JimV-N
     ``` bash
-    # 提示：经测试发现，CentOS 7.4 中 Libvirt-python 对后台多线程支持不是很完善。故而建议以非守护进程模式启动 JimV-N。
-    # 具体操作如下：
-    sed -i 's@"daemon": true,@"daemon": false,@g' /etc/jimvn.conf
-    screen
     cd /opt/JimV-N && ./startup.sh
-    # Ctrl-a d 可以分离开当前 screen
     ```
 
 

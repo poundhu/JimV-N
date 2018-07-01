@@ -320,9 +320,11 @@ function display_summary_information() {
 
     if [ ${SHOW_WARNING_VTX} = true ]; then
         echo "警告：请检查 CPU 是否开启 VT 技术。未开启 VT 技术的计算节点，将以 QEMU 模式运行虚拟机。"
+        echo
     fi
 
     echo "现在可以通过命令 'cd /opt/JimV-N && ./startup.sh' 启动运行 JimV-N。"
+    echo
 }
 
 function deploy() {
