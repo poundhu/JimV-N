@@ -617,3 +617,53 @@ class Guest(object):
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
+    @staticmethod
+    def adjust_ability(conn=None, guest=None, msg=None):
+        assert isinstance(conn, libvirt.virConnect)
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+        extend_data = dict()
+
+        try:
+            cpu = msg['cpu'].__str__()
+            memory = msg['memory'].__str__()
+
+            xml = ET.fromstring(guest.XMLDesc())
+
+            origin_ability = xml.find('vcpu').text + '核' + (int(xml.find('memory').text) / 1024 ** 2).__str__() + 'GiB'
+            new_ability = cpu + '核' + memory + 'GiB'
+
+            xml.find('vcpu').text = cpu
+
+            xml.find('memory').set('unit', 'GiB')
+            xml.find('memory').text = memory
+
+            xml.find('currentMemory').set('unit', 'GiB')
+            xml.find('currentMemory').text = memory
+
+
+            xml_str = ET.tostring(xml, encoding='utf8', method='xml')
+
+
+            if guest.isActive():
+                log = u'虚拟机非关闭状态。'
+                logger.error(msg=log)
+                log_emit.error(msg=log)
+
+            else:
+                if conn.defineXML(xml=xml_str):
+                    log = u' '.join([u'域', guest.name(), u', UUID', guest.UUIDString(), u'配置从', origin_ability, '变更为', new_ability])
+                    logger.error(msg=log)
+                    log_emit.error(msg=log)
+
+                else:
+                    log = u'变更配置失败。'
+                    logger.error(msg=log)
+                    log_emit.error(msg=log)
+
+        except:
+            logger.error(traceback.format_exc())
+            log_emit.error(traceback.format_exc())
+            response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
