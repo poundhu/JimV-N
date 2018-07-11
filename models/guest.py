@@ -488,19 +488,14 @@ class Guest(object):
             # 如果恢复后的 Guest 为 Running 状态，则同步其系统时间。
             if guest.isActive():
                 # https://qemu.weilnetz.de/doc/qemu-ga-ref.html#index-guest_002dset_002dtime
-                try:
-                    libvirt_qemu.qemuAgentCommand(guest, json.dumps({
-                            'execute': 'guest-set-time',
-                            'arguments': {
-                                'time': int(ji.Common.ts() * (10**9))
-                            }
-                        }),
-                        3,
-                        libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
-
-                except libvirt.libvirtError, e:
-                    logger.error(e.message)
-                    log_emit.error(e.message)
+                libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                        'execute': 'guest-set-time',
+                        'arguments': {
+                            'time': int(ji.Common.ts() * (10**9))
+                        }
+                    }),
+                    3,
+                    libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
 
             response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
@@ -641,25 +636,25 @@ class Guest(object):
             xml.find('currentMemory').set('unit', 'GiB')
             xml.find('currentMemory').text = memory
 
-
             xml_str = ET.tostring(xml, encoding='utf8', method='xml')
-
 
             if guest.isActive():
                 log = u'虚拟机非关闭状态。'
-                logger.error(msg=log)
-                log_emit.error(msg=log)
+                raise RuntimeError(log)
 
             else:
                 if conn.defineXML(xml=xml_str):
-                    log = u' '.join([u'域', guest.name(), u', UUID', guest.UUIDString(), u'配置从', origin_ability, '变更为', new_ability])
-                    logger.error(msg=log)
-                    log_emit.error(msg=log)
+                    log = u' '.join([u'域', guest.name(), u', UUID', guest.UUIDString(), u'配置从', origin_ability,
+                                     '变更为', new_ability])
+                    logger.info(msg=log)
+                    log_emit.info(msg=log)
 
                 else:
                     log = u'变更配置失败。'
-                    logger.error(msg=log)
-                    log_emit.error(msg=log)
+                    raise RuntimeError(log)
+
+            response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                  data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
             logger.error(traceback.format_exc())

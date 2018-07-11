@@ -285,6 +285,12 @@ class Host(object):
                         t.start()
                         continue
 
+                    elif msg['action'] == 'adjust_ability':
+                        t = threading.Thread(target=Guest.adjust_ability, args=(self.conn, self.guest, msg))
+                        t.setDaemon(False)
+                        t.start()
+                        continue
+
                     elif msg['action'] == 'migrate':
 
                         # duri like qemu+ssh://destination_host/system
