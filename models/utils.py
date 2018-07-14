@@ -10,6 +10,10 @@ import json
 
 import redis
 import time
+import base64
+
+import libvirt
+import libvirt_qemu
 
 from models import LogLevel, EmitKind, GuestState, ResponseState, HostEvent
 from models import GuestCollectionPerformanceDataKind, HostCollectionPerformanceDataKind
@@ -56,6 +60,71 @@ class Utils(object):
         """
         import string
         return int(string.atoi(cls.md5(_str=_str), 16).__str__()[:_len])
+
+
+class QGA(object):
+
+    @staticmethod
+    def get_guest_exec_status(guest, pid):
+        ret = '{"return":{"exited":false}}'
+
+        i = 0
+        while not json.loads(ret)['return']['exited'] and i < 1000:
+            ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                      'execute': 'guest-exec-status',
+                      'arguments': {
+                          'pid': pid
+                      }
+                      }),
+                      3,
+                      libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+            i += 1
+            time.sleep(0.001)
+
+        return ret
+
+    @staticmethod
+    def get_guest_memory_info(guest):
+        memory_info = dict()
+
+        try:
+            exec_ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+                           'execute': 'guest-exec',
+                           'arguments': {
+                               'path': 'cat',
+                               'capture-output': True,
+                               'arg': [
+                                   '/proc/meminfo'
+                               ]
+                           }
+                           }),
+                           3,
+                           libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+            exec_ret = json.loads(exec_ret)
+
+            status_ret = QGA.get_guest_exec_status(guest=guest, pid=exec_ret['return']['pid'])
+
+            memory_info_str = base64.b64decode(json.loads(status_ret)['return']['out-data'])
+
+            for item in memory_info_str.split('\n'):
+                if item.__len__() == 0:
+                    continue
+
+                k, v = item.split(':')
+                if k not in memory_info:
+                    memory_info[k] = dict()
+                    v = v.split()
+                    memory_info[k]['value'] = v[0]
+
+                    if v.__len__() > 1:
+                        memory_info[k]['unit'] = v[1]
+
+        except libvirt.libvirtError as e:
+            pass
+
+        return memory_info
 
 
 class Emit(object):

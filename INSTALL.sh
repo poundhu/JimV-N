@@ -106,7 +106,7 @@ function check_precondition() {
 
     yum install epel-release -y
     yum install redis -y
-    yum install python2-pip git net-tools bind-utils gcc -y
+    yum install python2-pip git net-tools bind-utils gcc python-dmidecode -y
     pip install --upgrade pip -i ${PYPI}
 
     # 代替语句 ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'

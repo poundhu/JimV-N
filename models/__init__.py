@@ -33,7 +33,7 @@ from host import (
 )
 
 from utils import (
-    Utils, Emit
+    Utils, QGA, Emit
 )
 
 
@@ -44,7 +44,7 @@ __copyright__ = '(c) 2017 by James Iter.'
 
 
 __all__ = [
-    'Init', 'Guest', 'Disk', 'Host', 'Utils', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel',
+    'Init', 'Guest', 'Disk', 'Host', 'Utils', 'QGA', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel',
     'ResponseState', 'GuestCollectionPerformanceDataKind', 'HostCollectionPerformanceDataKind', 'PidFile'
 ]
 

@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 import psutil
 import cpuinfo
+import dmidecode
 import paramiko
 import threading
 
@@ -24,7 +25,7 @@ from initialize import config, logger, r, log_emit, response_emit, host_event_em
     threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest
 from guest import Guest
 from disk import Disk
-from utils import Utils
+from utils import Utils, QGA
 from status import StorageMode
 
 
@@ -46,6 +47,7 @@ class Host(object):
         self.cpu = psutil.cpu_count()
         self.cpuinfo = cpuinfo.get_cpu_info()
         self.memory = psutil.virtual_memory().total
+        self.dmidecode = dmidecode.QuerySection('all')
         self.interfaces = dict()
         self.disks = dict()
         self.guest_callbacks = list()
@@ -673,7 +675,7 @@ class Host(object):
                     self.update_disks()
 
                 host_event_emit.heartbeat(message={'node_id': self.node_id, 'cpu': self.cpu, 'cpuinfo': self.cpuinfo,
-                                                   'memory': self.memory,
+                                                   'memory': self.memory, 'dmidecode': self.dmidecode,
                                                    'interfaces': self.interfaces, 'disks': self.disks,
                                                    'system_load': os.getloadavg(), 'boot_time': boot_time,
                                                    'memory_available': psutil.virtual_memory().available,
@@ -720,11 +722,27 @@ class Host(object):
                 # 参考链接：
                 # https://libvirt.org/html/libvirt-libvirt-domain.html#VIR_DOMAIN_STATS_CPU_TOTAL
                 # https://stackoverflow.com/questions/40468370/what-does-cpu-time-represent-exactly-in-libvirt
+
+                memory_info = QGA.get_guest_memory_info(guest=guest)
+
+                memory_available = 0
+                memory_unused = 0
+
+                if memory_info.__len__() > 0:
+                    memory_available = memory_info.get('MemAvailable', None)
+                    memory_unused = memory_info.get('MemFree', None)
+
+                    if memory_available is not None:
+                        memory_available = memory_available.get('value', 0)
+
+                    if memory_unused is not None:
+                        memory_unused = memory_unused.get('value', 0)
+
                 cpu_memory = {
                     'guest_uuid': _uuid,
                     'cpu_load': cpu_load if cpu_load <= 100 else 100,
-                    'memory_available': 0,
-                    'memory_unused': 0
+                    'memory_available': memory_available,
+                    'memory_unused': memory_unused
                 }
 
             else:
