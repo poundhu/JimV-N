@@ -725,24 +725,22 @@ class Host(object):
 
                 memory_info = QGA.get_guest_memory_info(guest=guest)
 
+                memory_total = guest.maxMemory()
                 memory_available = 0
-                memory_unused = 0
+                memory_rate = 0
 
                 if memory_info.__len__() > 0:
                     memory_available = memory_info.get('MemAvailable', None)
-                    memory_unused = memory_info.get('MemFree', None)
 
                     if memory_available is not None:
                         memory_available = memory_available.get('value', 0)
-
-                    if memory_unused is not None:
-                        memory_unused = memory_unused.get('value', 0)
+                        memory_rate = int((1 - float(memory_available) / memory_total) * 100)
 
                 cpu_memory = {
                     'guest_uuid': _uuid,
                     'cpu_load': cpu_load if cpu_load <= 100 else 100,
                     'memory_available': memory_available,
-                    'memory_unused': memory_unused
+                    'memory_rate': memory_rate
                 }
 
             else:
