@@ -35,10 +35,15 @@ def main():
     signal.signal(signal.SIGTERM, Utils.signal_handle)
     signal.signal(signal.SIGINT, Utils.signal_handle)
 
-    guest_creating_progress_report_engine_engine = Host()
+    host_use_for_guest_creating_progress_report_engine = Host()
     t_ = threading.Thread(
-        target=guest_creating_progress_report_engine_engine.guest_creating_progress_report_engine, args=())
+        target=host_use_for_guest_creating_progress_report_engine.guest_creating_progress_report_engine, args=())
     threads.append(t_)
+
+#     host_use_for_guest_booting2running_report_engine = Host()
+#     t_ = threading.Thread(
+#         target=host_use_for_guest_booting2running_report_engine.guest_booting2running_report_engine, args=())
+#     threads.append(t_)
 
     host_use_for_instruction_process_engine = Host()
     t_ = threading.Thread(target=host_use_for_instruction_process_engine.instruction_process_engine, args=())

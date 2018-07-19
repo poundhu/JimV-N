@@ -18,11 +18,12 @@ import cpuinfo
 import dmidecode
 import paramiko
 import threading
+import libvirt_qemu
 
 from jimvn_exception import ConnFailed
 
 from initialize import config, logger, r, log_emit, response_emit, host_event_emit, guest_collection_performance_emit, \
-    threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest
+    threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest, q_booting_guest
 from guest import Guest
 from disk import Disk
 from utils import Utils, QGA
@@ -141,7 +142,7 @@ class Host(object):
                     continue
 
                 # 下列语句繁琐写法如 <code>if 'action' not in msg or 'uuid' not in msg:</code>
-                if not all([key in msg for key in ['_object', 'action', 'uuid']]):
+                if not all([key in msg for key in ['_object', 'action']]):
                     continue
 
                 extend_data = dict()
@@ -531,6 +532,14 @@ class Host(object):
                             except OSError:
                                 pass
 
+                elif msg['_object'] == 'global':
+                    if msg['action'] == 'refresh_guest_state':
+                        host_use_for_refresh_guest_state = Host()
+                        t = threading.Thread(target=host_use_for_refresh_guest_state.refresh_guest_state, args=())
+                        t.setDaemon(False)
+                        t.start()
+                        continue
+
                 else:
                     _log = u'未支持的 _object：' + msg['_object']
                     logger.error(_log)
@@ -642,6 +651,72 @@ class Host(object):
 
             if os.path.islink(disk.device):
                 self.disks[disk.mountpoint]['real_device'] = os.path.realpath(disk.device)
+
+    # 使用时，创建独立的实例来避开 多线程 的问题
+    def guest_booting2running_report_engine(self):
+        """
+        Guest 启动到运行状态上报
+        """
+        self.init_conn()
+        list_booting_guest = list()
+
+        def is_running(_guest):
+            running = False
+
+            try:
+                exec_ret = libvirt_qemu.qemuAgentCommand(_guest, json.dumps({
+                                'execute': 'guest-ping',
+                                'arguments': {
+                                }
+                            }),
+                            3,
+                            libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+                running = True
+
+            except:
+                logger.error(traceback.format_exc())
+
+            return running
+
+        while True:
+            if Utils.exit_flag:
+                msg = 'Thread guest_booting2running_report_engine say bye-bye'
+                print msg
+                logger.info(msg=msg)
+                return
+
+            # noinspection PyBroadException
+            try:
+                try:
+                    payload = q_booting_guest.get(timeout=config['engine_cycle_interval'])
+                    list_booting_guest.append(payload)
+                    q_booting_guest.task_done()
+                except Queue.Empty as e:
+                    time.sleep(config['engine_cycle_interval'])
+
+                threads_status['guest_booting2running_report_engine'] = dict()
+                threads_status['guest_booting2running_report_engine']['timestamp'] = ji.Common.ts()
+
+                for i, uuid in enumerate(list_booting_guest):
+                    guest = self.conn.lookupByUUIDString(uuidstr=uuid)
+                    log = u' '.join([u'域', guest.name(), u', UUID', uuid, u'的状态改变为'])
+
+                    if guest is not None and guest.isActive() and is_running(_guest=guest):
+                        log += u' Running。'
+                        guest_event_emit.running(uuid=uuid)
+                        logger.info(log)
+                        log_emit.info(log)
+
+                    else:
+                        time.sleep(config['engine_cycle_interval'])
+                        Guest.guest_state_report(guest=guest)
+
+                    del list_booting_guest[i]
+
+            except:
+                logger.error(traceback.format_exc())
+                log_emit.error(traceback.format_exc())
 
     # 使用时，创建独立的实例来避开 多线程 的问题
     def host_state_report_engine(self):

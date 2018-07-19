@@ -189,6 +189,9 @@ class GuestEventEmit(Emit):
     def no_state(self, uuid):
         return self.emit2(_type=GuestState.no_state.value, uuid=uuid)
 
+    def booting(self, uuid):
+        return self.emit2(_type=GuestState.booting.value, uuid=uuid)
+
     def running(self, uuid):
         return self.emit2(_type=GuestState.running.value, uuid=uuid)
 

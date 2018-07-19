@@ -164,6 +164,7 @@ function check_precondition() {
 
 function set_ntp() {
     yum install ntp -y
+    sed -i "/^server 0.centos.pool.ntp.org iburst/i\server ${REDIS_HOST} prefer" /etc/ntp.conf
     systemctl start ntpd
     systemctl enable ntpd
     timedatectl set-timezone Asia/Shanghai

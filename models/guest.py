@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 import libvirt_qemu
 import json
 
-from initialize import logger, log_emit, guest_event_emit, q_creating_guest, response_emit
+from initialize import logger, log_emit, guest_event_emit, q_creating_guest, q_booting_guest, response_emit
 from models.jimvn_exception import CommandExecFailed
 from models.status import OSTemplateInitializeOperateKind, StorageMode
 from disk import Disk
@@ -32,6 +32,7 @@ __contact__ = 'james.iter.cn@gmail.com'
 __copyright__ = '(c) 2017 by James Iter.'
 
 
+# noinspection PyPep8,PyPep8,PyPep8
 class Guest(object):
     jimv_edition = None
     storage_mode = None
@@ -217,6 +218,11 @@ class Guest(object):
             if state == libvirt.VIR_DOMAIN_RUNNING:
                 log += u' Running。'
                 guest_event_emit.running(uuid=_uuid)
+
+                # log += u' Booting。'
+                # guest_event_emit.booting(uuid=_uuid)
+
+                # q_booting_guest.put(guest)
 
             elif state == libvirt.VIR_DOMAIN_BLOCKED:
                 log += u' Blocked。'
