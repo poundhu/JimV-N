@@ -554,6 +554,8 @@ class Host(object):
                 time.sleep(5)
 
             except:
+                # 防止循环线程，在redis连接断开时，混水写入日志
+                time.sleep(5)
                 logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
                 response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),

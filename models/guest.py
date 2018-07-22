@@ -542,7 +542,7 @@ class Guest(object):
             else:
                 raise ValueError('Unknown value of storage_mode.')
 
-            cmd = ' '.join(['/usr/bin/qemu-img', 'convert', '-O', 'qcow2', '-s', msg['snapshot_id'],
+            cmd = ' '.join(['/usr/bin/qemu-img', 'convert', '--force-share', '-O', 'qcow2', '-s', msg['snapshot_id'],
                             snapshot_path, template_path])
 
             qemu_img_convert = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
