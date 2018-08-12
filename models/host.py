@@ -3,7 +3,6 @@
 
 
 import os
-import sys
 import time
 import traceback
 import Queue
@@ -20,7 +19,6 @@ import paramiko
 import threading
 import libvirt_qemu
 
-from jimvn_exception import ConnFailed
 
 from initialize import config, logger, r, log_emit, response_emit, host_event_emit, guest_collection_performance_emit, \
     threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest, q_booting_guest
@@ -39,7 +37,6 @@ __copyright__ = '(c) 2017 by James Iter.'
 class Host(object):
     def __init__(self):
         self.conn = None
-        self.dirty_scene = False
         self.guest = None
         self.guest_mapping_by_uuid = dict()
         self.hostname = ji.Common.get_hostname()
@@ -51,9 +48,8 @@ class Host(object):
         self.dmidecode = dmidecode.QuerySection('all')
         self.interfaces = dict()
         self.disks = dict()
-        self.guest_callbacks = list()
+        # host, guest 性能收集统计周期，单位(秒)
         self.interval = 60
-        # self.last_host_cpu_time = dict()
         self.last_host_traffic = dict()
         self.last_host_disk_io = dict()
         self.last_guest_cpu_time = dict()
@@ -63,10 +59,8 @@ class Host(object):
         self.ssh_client = None
 
     def init_conn(self):
-        self.conn = libvirt.open()
-
         if self.conn is None:
-            raise ConnFailed(u'打开连接失败 --> ' + sys.stderr)
+            self.conn = libvirt.open()
 
     def init_ssh_client(self, hostname, user):
         self.ssh_client = paramiko.SSHClient()
@@ -84,19 +78,6 @@ class Host(object):
         except libvirt.libvirtError as e:
             # 尝试重连 Libvirtd
             self.init_conn()
-
-    def clear_scene(self):
-
-        if self.dirty_scene:
-            self.dirty_scene = False
-
-            if self.guest.gf.exists(self.guest.system_image_path):
-                self.guest.gf.remove(self.guest.system_image_path)
-
-            else:
-                log = u'清理现场失败: 不存在的路径 --> ' + self.guest.guest_dir
-                logger.warn(msg=log)
-                log_emit.warn(msg=log)
 
     # 使用时，创建独立的实例来避开 多线程 的问题
     def instruction_process_engine(self):
@@ -134,14 +115,13 @@ class Host(object):
                         continue
 
                 except ValueError as e:
-                    logger.error(e.message)
                     log_emit.error(e.message)
                     continue
 
                 if 'node_id' in msg and int(msg['node_id']) != self.node_id:
                     continue
 
-                # 下列语句繁琐写法如 <code>if 'action' not in msg or 'uuid' not in msg:</code>
+                # 下列语句繁琐写法如 <code>if '_object' not in msg or 'action' not in msg:</code>
                 if not all([key in msg for key in ['_object', 'action']]):
                     continue
 
@@ -156,7 +136,6 @@ class Host(object):
 
                             if config['DEBUG']:
                                 _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                logger.debug(_log)
                                 log_emit.debug(_log)
 
                             raise RuntimeError('The uuid ' + msg['uuid'] + ' not found in current domains list.')
@@ -222,14 +201,14 @@ class Host(object):
                             # 签出系统镜像路径
                             path_list = system_disk.find('source').attrib['name'].split('/')
 
-                        if msg['storage_mode'] == StorageMode.glusterfs.value:
-                            Guest.dfs_volume = path_list[0]
-                            Guest.init_gfapi()
+                            if msg['storage_mode'] == StorageMode.glusterfs.value:
+                                Guest.dfs_volume = path_list[0]
+                                Guest.init_gfapi()
 
-                            try:
-                                Guest.gf.remove('/'.join(path_list[1:]))
-                            except OSError:
-                                pass
+                                try:
+                                    Guest.gf.remove('/'.join(path_list[1:]))
+                                except OSError:
+                                    pass
 
                         elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
                             file_path = system_disk.find('source').attrib['file']
@@ -274,13 +253,11 @@ class Host(object):
                     elif msg['action'] == 'update_ssh_key':
                         if not self.guest.isActive():
                             _log = u'欲更新 SSH-KEY 的目标虚拟机未处于活动状态。'
-                            logger.warning(_log)
                             log_emit.warn(_log)
                             continue
 
                         ret = Guest.update_ssh_key(guest=self.guest, msg=msg)
-
-                        logger.info(json.dumps(ret, ensure_ascii=False))
+                        log_emit.info(json.dumps(ret, ensure_ascii=False))
 
                     elif msg['action'] == 'allocate_bandwidth':
                         t = threading.Thread(target=Guest.allocate_bandwidth, args=(self.guest, msg))
@@ -318,7 +295,6 @@ class Host(object):
 
                             if not self.guest.isActive():
                                 _log = u'非共享存储不支持离线迁移。'
-                                logger.error(_log)
                                 log_emit.error(_log)
                                 raise RuntimeError('Nonsupport online migrate with storage of non sharing mode.')
 
@@ -331,11 +307,9 @@ class Host(object):
                                         ' '.join(['qemu-img', 'create', '-f', 'qcow2', _file_path, str(disk_size)]))
 
                                     for line in stdout:
-                                        logger.info(line)
                                         log_emit.info(line)
 
                                     for line in stderr:
-                                        logger.error(line)
                                         log_emit.error(line)
 
                         elif msg['storage_mode'] in [StorageMode.shared_mount.value, StorageMode.ceph.value,
@@ -404,7 +378,6 @@ class Host(object):
 
                                 if config['DEBUG']:
                                     _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                    logger.debug(_log)
                                     log_emit.debug(_log)
 
                                 raise RuntimeError('Resize disk failure, because the uuid ' + msg['guest_uuid'] +
@@ -450,7 +423,6 @@ class Host(object):
 
                             if config['DEBUG']:
                                 _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                logger.debug(_log)
                                 log_emit.debug(_log)
 
                             raise RuntimeError('Disk quota failure, because the uuid ' + msg['guest_uuid'] +
@@ -462,7 +434,6 @@ class Host(object):
 
                         if not self.guest.isActive():
                             _log = u'磁盘 ' + msg['uuid'] + u' 所属虚拟机未处于活动状态。'
-                            logger.warning(_log)
                             log_emit.warn(_log)
                             continue
 
@@ -475,7 +446,6 @@ class Host(object):
 
                         if config['DEBUG']:
                             _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                            logger.debug(_log)
                             log_emit.debug(_log)
 
                             raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the uuid ' +
@@ -542,7 +512,6 @@ class Host(object):
 
                 else:
                     _log = u'未支持的 _object：' + msg['_object']
-                    logger.error(_log)
                     log_emit.error(_log)
 
                 response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
@@ -556,7 +525,6 @@ class Host(object):
             except:
                 # 防止循环线程，在redis连接断开时，混水写入日志
                 time.sleep(5)
-                logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
                 response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                       passback_parameters=msg.get('passback_parameters'))
@@ -577,7 +545,6 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            # noinspection PyBroadException
             try:
                 try:
                     payload = q_creating_guest.get(timeout=config['engine_cycle_interval'])
@@ -618,7 +585,6 @@ class Host(object):
                     else:
                         del list_creating_guest[i]
                         log = u' '.join([u'UUID: ', guest['uuid'], u'未支持的存储模式: ', str(guest['storage_mode'])])
-                        logger.error(log)
                         log_emit.error(log)
 
                     guest_event_emit.creating(uuid=guest['uuid'], progress=int(progress * 90))
@@ -627,7 +593,6 @@ class Host(object):
                         del list_creating_guest[i]
 
             except:
-                logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
 
     def update_interfaces(self):
@@ -707,7 +672,6 @@ class Host(object):
                     if guest is not None and guest.isActive() and is_running(_guest=guest):
                         log += u' Running。'
                         guest_event_emit.running(uuid=uuid)
-                        logger.info(log)
                         log_emit.info(log)
 
                     else:
@@ -717,7 +681,6 @@ class Host(object):
                     del list_booting_guest[i]
 
             except:
-                logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
 
     # 使用时，创建独立的实例来避开 多线程 的问题
@@ -725,7 +688,6 @@ class Host(object):
         """
         计算节点状态上报引擎
         """
-        self.init_conn()
 
         # 首次启动时，做数据初始化
         self.update_interfaces()
@@ -742,7 +704,6 @@ class Host(object):
             threads_status['host_state_report_engine'] = dict()
             threads_status['host_state_report_engine']['timestamp'] = ji.Common.ts()
 
-            # noinspection PyBroadException
             try:
                 time.sleep(config['engine_cycle_interval'])
 
@@ -759,7 +720,6 @@ class Host(object):
                                                    'threads_status': threads_status})
 
             except:
-                logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
 
     def refresh_guest_state(self):
@@ -771,7 +731,6 @@ class Host(object):
                 Guest.guest_state_report(guest)
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
 
     def guest_cpu_memory_performance_report(self):
@@ -957,7 +916,6 @@ class Host(object):
             time.sleep(config['engine_cycle_interval'])
             self.ts = ji.Common.ts()
 
-            # noinspection PyBroadException
             try:
 
                 if self.ts % self.interval != 0:
@@ -984,7 +942,6 @@ class Host(object):
                 self.guest_disk_io_performance_report()
 
             except:
-                logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
 
     def host_cpu_memory_performance_report(self):
@@ -1070,8 +1027,6 @@ class Host(object):
             host_collection_performance_emit.disk_usage_io(data=data)
 
     def host_performance_collection_engine(self):
-        self.init_conn()
-
         while True:
             if Utils.exit_flag:
                 msg = 'Thread host_performance_collection_engine say bye-bye'
@@ -1084,7 +1039,6 @@ class Host(object):
             time.sleep(config['engine_cycle_interval'])
             self.ts = ji.Common.ts()
 
-            # noinspection PyBroadException
             try:
 
                 if self.ts % self.interval != 0:
@@ -1097,6 +1051,5 @@ class Host(object):
                 self.host_disk_usage_io_performance_report()
 
             except:
-                logger.error(traceback.format_exc())
                 log_emit.error(traceback.format_exc())
 

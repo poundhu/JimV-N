@@ -19,8 +19,9 @@ from gluster import gfapi
 import xml.etree.ElementTree as ET
 import libvirt_qemu
 import json
+import base64
 
-from initialize import logger, log_emit, guest_event_emit, q_creating_guest, q_booting_guest, response_emit
+from initialize import log_emit, guest_event_emit, q_creating_guest, q_booting_guest, response_emit
 from models.jimvn_exception import CommandExecFailed
 from models.status import OSTemplateInitializeOperateKind, StorageMode
 from disk import Disk
@@ -32,9 +33,7 @@ __contact__ = 'james.iter.cn@gmail.com'
 __copyright__ = '(c) 2017 by James Iter.'
 
 
-# noinspection PyPep8,PyPep8,PyPep8
 class Guest(object):
-    jimv_edition = None
     storage_mode = None
     gf = None
     dfs_volume = None
@@ -67,48 +66,51 @@ class Guest(object):
 
         return cls.gf
 
+    def generate_system_image_by_glusterfs(self):
+        if not self.gf.isfile(self.template_path):
+            err = u' '.join([u'域', self.name, u', UUID', self.uuid, u'所依赖的模板', self.template_path, u'不存在.'])
+            raise SystemError(err)
+
+        if not self.gf.isdir(os.path.dirname(self.system_image_path)):
+            self.gf.makedirs(os.path.dirname(self.system_image_path), 0755)
+
+        self.gf.copyfile(self.template_path, self.system_image_path)
+
+    def generate_system_image_by_local_path(self):
+        if not os.path.exists(self.template_path) or not os.path.isfile(self.template_path):
+            err = u' '.join([u'域', self.name, u', UUID', self.uuid, u'所依赖的模板', self.template_path, u'不存在.'])
+            raise SystemError(err)
+
+        if not os.access(self.template_path, os.R_OK):
+            err = u' '.join([u'域', self.name, u', UUID', self.uuid, u'所依赖的模板', self.template_path, u'无权访问.'])
+            raise SystemError(err)
+
+        system_image_path_dir = os.path.dirname(self.system_image_path)
+
+        if not os.path.exists(system_image_path_dir):
+            os.makedirs(system_image_path_dir, 0755)
+
+        elif not os.path.isdir(system_image_path_dir):
+            os.rename(system_image_path_dir, system_image_path_dir + '.bak')
+            os.makedirs(system_image_path_dir, 0755)
+
+        shutil.copyfile(self.template_path, self.system_image_path)
+
     def generate_system_image(self):
         if self.storage_mode in [StorageMode.ceph.value, StorageMode.glusterfs.value]:
             if self.storage_mode == StorageMode.glusterfs.value:
-                if not self.gf.isfile(self.template_path):
-                    log = u' '.join([u'域', self.name, u', UUID', self.uuid, u'所依赖的模板', self.template_path, u'不存在.'])
-                    logger.error(msg=log)
-                    log_emit.error(msg=log)
-                    return False
-
-                if not self.gf.isdir(os.path.dirname(self.system_image_path)):
-                    self.gf.makedirs(os.path.dirname(self.system_image_path), 0755)
-
-                self.gf.copyfile(self.template_path, self.system_image_path)
+                self.generate_system_image_by_glusterfs()
 
         elif self.storage_mode in [StorageMode.local.value, StorageMode.shared_mount.value]:
-            if not os.path.exists(self.template_path) or not os.path.isfile(self.template_path):
-                log = u' '.join([u'域', self.name, u', UUID', self.uuid, u'所依赖的模板', self.template_path, u'不存在.'])
-                logger.error(msg=log)
-                log_emit.error(msg=log)
-                return False
-
-            if not os.access(self.template_path, os.R_OK):
-                log = u' '.join([u'域', self.name, u', UUID', self.uuid, u'所依赖的模板', self.template_path, u'无权访问.'])
-                logger.error(msg=log)
-                log_emit.error(msg=log)
-                return False
-
-            system_image_path_dir = os.path.dirname(self.system_image_path)
-
-            if not os.path.exists(system_image_path_dir):
-                os.makedirs(system_image_path_dir, 0755)
-
-            elif not os.path.isdir(system_image_path_dir):
-                os.rename(system_image_path_dir, system_image_path_dir + '.bak')
-                os.makedirs(system_image_path_dir, 0755)
-
-            shutil.copyfile(self.template_path, self.system_image_path)
+            self.generate_system_image_by_local_path()
 
         else:
             raise ValueError('Unknown value of storage_mode.')
 
         return True
+
+    def define_by_xml(self, conn=None):
+        return conn.defineXML(xml=self.xml)
 
     def execute_os_template_initialize_operates(self, guest=None, os_template_initialize_operates=None, os_type=None):
         if not isinstance(os_template_initialize_operates, list):
@@ -116,6 +118,11 @@ class Guest(object):
 
         if os_template_initialize_operates.__len__() < 1:
             return True
+
+        is_windows = False
+
+        if str(os_type).lower().find('windows') >= 0:
+            is_windows = True
 
         self.xml = guest.XMLDesc()
         root = ET.fromstring(self.xml)
@@ -140,7 +147,8 @@ class Guest(object):
         for os_template_initialize_operate in os_template_initialize_operates:
             if os_template_initialize_operate['kind'] == OSTemplateInitializeOperateKind.cmd.value:
 
-                if str(os_type).lower().find('windows') >= 0:
+                # 暂不支持 Windows 命令
+                if is_windows:
                     continue
 
                 self.g.sh(os_template_initialize_operate['command'])
@@ -148,7 +156,7 @@ class Guest(object):
             elif os_template_initialize_operate['kind'] == OSTemplateInitializeOperateKind.write_file.value:
 
                 content = os_template_initialize_operate['content']
-                if str(os_type).lower().find('windows') >= 0:
+                if is_windows:
                     content = content.replace('\r', '').replace('\n', '\r\n')
 
                 self.g.write(os_template_initialize_operate['path'], content)
@@ -156,7 +164,7 @@ class Guest(object):
             elif os_template_initialize_operate['kind'] == OSTemplateInitializeOperateKind.append_file.value:
 
                 content = os_template_initialize_operate['content']
-                if str(os_type).lower().find('windows') >= 0:
+                if is_windows:
                     content = content.replace('\r', '').replace('\n', '\r\n')
 
                 self.g.write_append(os_template_initialize_operate['path'], content)
@@ -169,42 +177,13 @@ class Guest(object):
 
         return True
 
-    def define_by_xml(self, conn=None):
-        try:
-            if conn.defineXML(xml=self.xml):
-                log = u' '.join([u'域', self.name, u', UUID', self.uuid, u'定义成功.'])
-                logger.info(msg=log)
-                log_emit.info(msg=log)
-            else:
-                log = u' '.join([u'域', self.name, u', UUID', self.uuid, u'定义时未预期返回.'])
-                logger.info(msg=log)
-                log_emit.info(msg=log)
-                return False
-
-        except libvirt.libvirtError as e:
-            logger.error(e.message)
-            log_emit.error(e.message)
-            return False
-
-        return True
-
     def start_by_uuid(self, conn=None):
-        try:
-            domain = conn.lookupByUUIDString(uuidstr=self.uuid)
-            domain.create()
-            log = u' '.join([u'域', self.name, u', UUID', self.uuid, u'启动成功.'])
-            logger.info(msg=log)
-            log_emit.info(msg=log)
-
-        except libvirt.libvirtError as e:
-            logger.error(e.message)
-            log_emit.error(e.message)
-            return False
-
-        return True
+        domain = conn.lookupByUUIDString(uuidstr=self.uuid)
+        domain.create()
 
     @staticmethod
     def guest_state_report(guest):
+        # 使用uuid，重新获取
 
         try:
             _uuid = guest.UUIDString()
@@ -253,11 +232,9 @@ class Guest(object):
 
                 guest_event_emit.no_state(uuid=_uuid)
 
-            logger.info(log)
             log_emit.info(log)
 
         except Exception as e:
-            logger.error(e.message)
             log_emit.error(e.message)
 
     @staticmethod
@@ -295,8 +272,9 @@ class Guest(object):
             if not guest.generate_system_image():
                 raise RuntimeError('System image generate failure.')
 
-            if not guest.define_by_xml(conn=conn):
-                raise RuntimeError('Define the instance of virtual machine by xml failure.')
+            guest.define_by_xml(conn=conn)
+            log = u' '.join([u'域', guest.name, u', UUID', guest.uuid, u'定义成功.'])
+            log_emit.info(msg=log)
 
             guest_event_emit.creating(uuid=guest.uuid, progress=92)
 
@@ -319,8 +297,9 @@ class Guest(object):
 
             guest_event_emit.creating(uuid=guest.uuid, progress=97)
 
-            if not guest.start_by_uuid(conn=conn):
-                raise RuntimeError('Start the instance of virtual machine by uuid failure.')
+            guest.start_by_uuid(conn=conn)
+            log = u' '.join([u'域', guest.name, u', UUID', guest.uuid, u'启动成功.'])
+            log_emit.info(msg=log)
 
             cls.quota(guest=conn.lookupByUUIDString(uuidstr=guest.uuid), msg=msg)
 
@@ -328,7 +307,6 @@ class Guest(object):
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   passback_parameters=msg.get('passback_parameters'))
@@ -362,6 +340,8 @@ class Guest(object):
         assert isinstance(guest, libvirt.virDomain)
         assert isinstance(msg, dict)
 
+        from utils import QGA
+
         libvirt_qemu.qemuAgentCommand(guest, json.dumps({
                 'execute': 'guest-exec',
                 'arguments': {
@@ -384,7 +364,7 @@ class Guest(object):
             if i > 0:
                 redirection_symbol = '>>'
 
-            ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+            exec_ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
                     'execute': 'guest-exec',
                     'arguments': {
                         'path': '/bin/sh',
@@ -398,18 +378,10 @@ class Guest(object):
                 3,
                 libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
 
-            ret = json.loads(ret)
-
-            ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
-                    'execute': 'guest-exec-status',
-                    'arguments': {
-                        'pid': ret['return']['pid']
-                    }
-                }),
-                3,
-                libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
-
-            ret_s.append(json.loads(ret))
+            exec_ret = json.loads(exec_ret)
+            status_ret = QGA.get_guest_exec_status(guest=guest, pid=exec_ret['return']['pid'])
+            exec_ret_str = base64.b64decode(json.loads(status_ret)['return']['out-data'])
+            ret_s.append(json.loads(exec_ret_str))
 
         return ret_s
 
@@ -446,7 +418,6 @@ class Guest(object):
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
@@ -466,7 +437,6 @@ class Guest(object):
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
@@ -507,7 +477,6 @@ class Guest(object):
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
@@ -572,24 +541,18 @@ class Guest(object):
                 qemu_img_convert.poll()
 
             if qemu_img_convert.returncode != 0:
-                log = u'创建自定义模板失败，命令执行退出异常。'
-                logger.error(msg=log)
-                log_emit.error(msg=log)
-                raise CommandExecFailed(log)
+                raise CommandExecFailed(u'创建自定义模板失败，命令执行退出异常。')
 
             response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
     @staticmethod
     def allocate_bandwidth(guest=None, msg=None):
-        assert isinstance(guest, libvirt.virDomain)
-        assert isinstance(msg, dict)
         extend_data = dict()
 
         """
@@ -597,6 +560,9 @@ class Guest(object):
         """
 
         try:
+            assert isinstance(guest, libvirt.virDomain)
+            assert isinstance(msg, dict)
+
             bandwidth = msg['bandwidth'] / 1000 / 8
             mac = ET.fromstring(guest.XMLDesc()).findall('devices/interface')[0].find('mac').attrib['address']
 
@@ -613,19 +579,19 @@ class Guest(object):
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
     @staticmethod
     def adjust_ability(conn=None, guest=None, msg=None):
-        assert isinstance(conn, libvirt.virConnect)
-        assert isinstance(guest, libvirt.virDomain)
-        assert isinstance(msg, dict)
         extend_data = dict()
 
         try:
+            assert isinstance(conn, libvirt.virConnect)
+            assert isinstance(guest, libvirt.virDomain)
+            assert isinstance(msg, dict)
+
             cpu = msg['cpu'].__str__()
             memory = msg['memory'].__str__()
 
@@ -645,25 +611,21 @@ class Guest(object):
             xml_str = ET.tostring(xml, encoding='utf8', method='xml')
 
             if guest.isActive():
-                log = u'虚拟机非关闭状态。'
-                raise RuntimeError(log)
+                raise RuntimeError(u'虚拟机非关闭状态。')
 
             else:
                 if conn.defineXML(xml=xml_str):
                     log = u' '.join([u'域', guest.name(), u', UUID', guest.UUIDString(), u'配置从', origin_ability,
                                      '变更为', new_ability])
-                    logger.info(msg=log)
                     log_emit.info(msg=log)
 
                 else:
-                    log = u'变更配置失败。'
-                    raise RuntimeError(log)
+                    raise RuntimeError(u'变更配置失败。')
 
             response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
         except:
-            logger.error(traceback.format_exc())
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))

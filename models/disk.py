@@ -8,7 +8,7 @@ import os
 from utils import Utils
 from jimvn_exception import CommandExecFailed
 
-from initialize import logger, log_emit
+from initialize import log_emit
 
 
 __author__ = 'James Iter'
@@ -31,7 +31,6 @@ class Disk(object):
 
         if exit_status != 0:
             log = u' '.join([u'路径', image_path, u'创建磁盘时，命令执行退出异常：', str(output)])
-            logger.error(msg=log)
             log_emit.error(msg=log)
             raise CommandExecFailed(log)
 
@@ -48,7 +47,6 @@ class Disk(object):
 
         if exit_status != 0:
             log = u' '.join([u'路径', image_path, u'创建磁盘时，命令执行退出异常：', str(output)])
-            logger.error(msg=log)
             log_emit.error(msg=log)
             raise CommandExecFailed(log)
 
@@ -63,7 +61,6 @@ class Disk(object):
 
         if exit_status != 0:
             log = u' '.join([u'路径', image_path, u'磁盘扩容时，命令执行退出异常：', str(output)])
-            logger.error(msg=log)
             log_emit.error(msg=log)
             raise CommandExecFailed(log)
 
@@ -76,7 +73,6 @@ class Disk(object):
 
         if exit_status != 0:
             log = u' '.join([u'路径', image_path, u'磁盘扩容时，命令执行退出异常：', str(output)])
-            logger.error(msg=log)
             log_emit.error(msg=log)
             raise CommandExecFailed(log)
 
@@ -98,7 +94,6 @@ class Disk(object):
 
         if exit_status != 0:
             log = u' '.join([u'路径', image_path, u'磁盘扩容时，命令执行退出异常：', str(output)])
-            logger.error(msg=log)
             log_emit.error(msg=log)
             raise CommandExecFailed(log)
 
@@ -111,7 +106,6 @@ class Disk(object):
 
         if exit_status != 0:
             log = u' '.join([u'路径', image_path, u'磁盘扩容时，命令执行退出异常：', str(output)])
-            logger.error(msg=log)
             log_emit.error(msg=log)
             raise CommandExecFailed(log)
 

@@ -140,7 +140,7 @@ class Emit(object):
         from initialize import logger
 
         if all([key is None for key in [_kind, _type, message]]):
-            logger.warning(u'参数 _kind, _type, message 均不能为None.')
+            logger.warning(u'参数 _kind, _type, message 均不能为 None.')
             return False
 
         msg = json.dumps({'kind': _kind, 'type': _type, 'timestamp': ji.Common.ts(), 'host': self.hostname,
@@ -155,10 +155,31 @@ class Emit(object):
 
 
 class LogEmit(Emit):
+
     def __init__(self):
         super(LogEmit, self).__init__()
 
     def emit2(self, _type=None, message=None):
+        from initialize import logger
+
+        if _type == LogLevel.debug.value:
+            logger.debug(msg=message)
+
+        elif _type == LogLevel.info.value:
+            logger.info(msg=message)
+
+        elif _type == LogLevel.warn.value:
+            logger.warn(msg=message)
+
+        elif _type == LogLevel.error.value:
+            logger.error(msg=message)
+
+        elif _type == LogLevel.critical.value:
+            logger.critical(msg=message)
+
+        else:
+            logger.debug(msg=message)
+
         return self.emit(_kind=EmitKind.log.value, _type=_type, message=message)
 
     def debug(self, msg):
