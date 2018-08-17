@@ -151,113 +151,40 @@ class Host(object):
                         continue
 
                     elif msg['action'] == 'reboot':
-                        if self.guest.reboot() != 0:
-                            raise RuntimeError('Guest reboot failure.')
+                        Guest.reboot(guest=self.guest)
 
                     elif msg['action'] == 'force_reboot':
-                        self.guest.destroy()
-                        self.guest.create()
-                        Guest.quota(guest=self.guest, msg=msg)
+                        Guest.force_reboot(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'shutdown':
-                        if self.guest.shutdown() != 0:
-                            raise RuntimeError('Guest shutdown failure.')
+                        Guest.shutdown(guest=self.guest)
 
                     elif msg['action'] == 'force_shutdown':
-                        if self.guest.destroy() != 0:
-                            raise RuntimeError('Guest force shutdown failure.')
+                        Guest.force_shutdown(guest=self.guest)
 
                     elif msg['action'] == 'boot':
-                        if not self.guest.isActive():
-
-                            if self.guest.create() != 0:
-                                raise RuntimeError('Guest boot failure.')
-
-                            Guest.quota(guest=self.guest, msg=msg)
+                        Guest.boot(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'suspend':
-                        if self.guest.suspend() != 0:
-                            raise RuntimeError('Guest suspend failure.')
+                        Guest.suspend(guest=self.guest)
 
                     elif msg['action'] == 'resume':
-                        if self.guest.resume() != 0:
-                            raise RuntimeError('Guest resume failure.')
+                        Guest.resume(guest=self.guest)
 
                     elif msg['action'] == 'delete':
-                        root = ET.fromstring(self.guest.XMLDesc())
-
-                        if self.guest.isActive():
-                            self.guest.destroy()
-
-                        self.guest.undefine()
-
-                        system_disk = None
-
-                        for _disk in root.findall('devices/disk'):
-                            if 'vda' == _disk.find('target').get('dev'):
-                                system_disk = _disk
-
-                        if msg['storage_mode'] in [StorageMode.ceph.value, StorageMode.glusterfs.value]:
-                            # 签出系统镜像路径
-                            path_list = system_disk.find('source').attrib['name'].split('/')
-
-                            if msg['storage_mode'] == StorageMode.glusterfs.value:
-                                Guest.dfs_volume = path_list[0]
-                                Guest.init_gfapi()
-
-                                try:
-                                    Guest.gf.remove('/'.join(path_list[1:]))
-                                except OSError:
-                                    pass
-
-                        elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
-                            file_path = system_disk.find('source').attrib['file']
-                            try:
-                                os.remove(file_path)
-                            except OSError:
-                                pass
+                        Guest.delete(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'reset_password':
-                        if self.guest.setUserPassword(msg['user'], msg['password']) != 0:
-                            raise RuntimeError('Guest reset password failure.')
+                        Guest.reset_password(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'attach_disk':
-
-                        if 'xml' not in msg:
-                            _log = u'添加磁盘缺少 xml 参数'
-                            raise KeyError(_log)
-
-                        flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
-                        if self.guest.isActive():
-                            flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
-
-                        # 添加磁盘成功返回时，ret值为0。可参考 Linux 命令返回值规范？
-                        if self.guest.attachDeviceFlags(xml=msg['xml'], flags=flags) != 0:
-                            raise RuntimeError('Attack disk failure.')
-
-                        Guest.quota(guest=self.guest, msg=msg)
+                        Guest.attach_disk(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'detach_disk':
-
-                        if 'xml' not in msg:
-                            _log = u'分离磁盘缺少 xml 参数'
-                            raise KeyError(_log)
-
-                        flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
-                        if self.guest.isActive():
-                            flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
-
-                        if self.guest.detachDeviceFlags(xml=msg['xml'], flags=flags) != 0:
-                            raise RuntimeError('Detach disk failure.')
+                        Guest.detach_disk(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'update_ssh_key':
-                        if not self.guest.isActive():
-                            _log = u'欲更新 SSH-KEY 的目标虚拟机未处于活动状态。'
-                            log_emit.warn(_log)
-                            continue
-
-                        ret = Guest.update_ssh_key(guest=self.guest, msg=msg)
-                        log_emit.info(json.dumps(ret, ensure_ascii=False))
+                        Guest.update_ssh_key(guest=self.guest, msg=msg)
 
                     elif msg['action'] == 'allocate_bandwidth':
                         t = threading.Thread(target=Guest.allocate_bandwidth, args=(self.guest, msg))
@@ -272,64 +199,7 @@ class Host(object):
                         continue
 
                     elif msg['action'] == 'migrate':
-
-                        # duri like qemu+ssh://destination_host/system
-                        if 'duri' not in msg:
-                            _log = u'迁移操作缺少 duri 参数'
-                            raise KeyError(_log)
-
-                        # https://rk4n.github.io/2016/08/10/qemu-post-copy-and-auto-converge-features/
-                        flags = libvirt.VIR_MIGRATE_PERSIST_DEST | \
-                            libvirt.VIR_MIGRATE_UNDEFINE_SOURCE | \
-                            libvirt.VIR_MIGRATE_COMPRESSED | \
-                            libvirt.VIR_MIGRATE_PEER2PEER | \
-                            libvirt.VIR_MIGRATE_AUTO_CONVERGE
-
-                        root = ET.fromstring(self.guest.XMLDesc())
-
-                        if msg['storage_mode'] == StorageMode.local.value:
-                            # 需要把磁盘存放路径加入到两边宿主机的存储池中
-                            # 不然将会报 no storage pool with matching target path '/opt/Images' 错误
-                            flags |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
-                            flags |= libvirt.VIR_MIGRATE_LIVE
-
-                            if not self.guest.isActive():
-                                _log = u'非共享存储不支持离线迁移。'
-                                log_emit.error(_log)
-                                raise RuntimeError('Nonsupport online migrate with storage of non sharing mode.')
-
-                            if self.init_ssh_client(hostname=msg['duri'].split('/')[2], user='root'):
-                                for _disk in root.findall('devices/disk'):
-                                    _file_path = _disk.find('source').get('file')
-                                    disk_info = Disk.disk_info_by_local(image_path=_file_path)
-                                    disk_size = disk_info['virtual-size']
-                                    stdin, stdout, stderr = self.ssh_client.exec_command(
-                                        ' '.join(['qemu-img', 'create', '-f', 'qcow2', _file_path, str(disk_size)]))
-
-                                    for line in stdout:
-                                        log_emit.info(line)
-
-                                    for line in stderr:
-                                        log_emit.error(line)
-
-                        elif msg['storage_mode'] in [StorageMode.shared_mount.value, StorageMode.ceph.value,
-                                                     StorageMode.glusterfs.value]:
-                            if self.guest.isActive():
-                                flags |= libvirt.VIR_MIGRATE_LIVE
-                                flags |= libvirt.VIR_MIGRATE_TUNNELLED
-
-                            else:
-                                flags |= libvirt.VIR_MIGRATE_OFFLINE
-
-                        if self.guest.migrateToURI(duri=msg['duri'], flags=flags) == 0:
-                            if msg['storage_mode'] == StorageMode.local.value:
-                                for _disk in root.findall('devices/disk'):
-                                    _file_path = _disk.find('source').get('file')
-                                    if _file_path is not None:
-                                        os.remove(_file_path)
-
-                        else:
-                            raise RuntimeError('Unknown storage mode.')
+                        Guest().migrate(guest=self.guest, msg=msg)
 
                 elif msg['_object'] == 'disk':
                     if msg['action'] == 'create':
@@ -443,18 +313,11 @@ class Host(object):
 
                     self.refresh_guest_mapping()
                     if msg['uuid'] not in self.guest_mapping_by_uuid:
-
-                        if config['DEBUG']:
-                            _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                            log_emit.debug(_log)
-
-                            raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the uuid ' +
-                                               msg['uuid'] + ' not found in current domains.')
+                        raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the uuid ' +
+                                           msg['uuid'] + ' not found in current domains.')
 
                     self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-
-                    if not isinstance(self.guest, libvirt.virDomain):
-                        raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the guest is not a domain.')
+                    assert isinstance(self.guest, libvirt.virDomain)
 
                     if msg['action'] == 'create':
 

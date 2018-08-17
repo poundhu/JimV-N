@@ -11,6 +11,7 @@ import signal
 import time
 import re
 import fcntl
+import paramiko
 
 import guestfs
 import libvirt
@@ -53,6 +54,14 @@ class Guest(object):
         # Guest 系统镜像路径，不包含 dfs 卷标
         self.system_image_path = None
         self.g = guestfs.GuestFS(python_return_dict=True)
+        self.ssh_client = None
+
+    def init_ssh_client(self, hostname, user):
+        self.ssh_client = paramiko.SSHClient()
+        self.ssh_client.load_system_host_keys()
+        self.ssh_client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
+        self.ssh_client.connect(hostname=hostname, username=user)
+        return True
 
     @classmethod
     def init_gfapi(cls):
@@ -311,6 +320,135 @@ class Guest(object):
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   passback_parameters=msg.get('passback_parameters'))
 
+    @classmethod
+    def reboot(cls, guest=None):
+        assert isinstance(guest, libvirt.virDomain)
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainReboot
+        guest.reboot()
+
+    @classmethod
+    def force_reboot(cls, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        guest.destroy()
+        guest.create()
+        cls.quota(guest=guest, msg=msg)
+
+    @classmethod
+    def shutdown(cls, guest=None):
+        assert isinstance(guest, libvirt.virDomain)
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainShutdown
+        guest.shutdown()
+
+    @classmethod
+    def force_shutdown(cls, guest=None):
+        assert isinstance(guest, libvirt.virDomain)
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainDestroy
+        guest.destroy()
+
+    @classmethod
+    def boot(cls, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        if not guest.isActive():
+
+            # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainCreate
+            guest.create()
+
+            cls.quota(guest=guest, msg=msg)
+
+    @classmethod
+    def suspend(cls, guest=None):
+        assert isinstance(guest, libvirt.virDomain)
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainSuspend
+        guest.suspend()
+
+    @classmethod
+    def resume(cls, guest=None):
+        assert isinstance(guest, libvirt.virDomain)
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainResume
+        guest.resume()
+
+    @classmethod
+    def delete(cls, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        root = ET.fromstring(guest.XMLDesc())
+
+        if guest.isActive():
+            guest.destroy()
+
+        guest.undefine()
+
+        system_disk = None
+
+        for _disk in root.findall('devices/disk'):
+            if 'vda' == _disk.find('target').get('dev'):
+                system_disk = _disk
+
+        if msg['storage_mode'] in [StorageMode.ceph.value, StorageMode.glusterfs.value]:
+            # 签出系统镜像路径
+            path_list = system_disk.find('source').attrib['name'].split('/')
+
+            if msg['storage_mode'] == StorageMode.glusterfs.value:
+                cls.dfs_volume = path_list[0]
+                cls.init_gfapi()
+
+                try:
+                    cls.gf.remove('/'.join(path_list[1:]))
+                except OSError:
+                    pass
+
+        elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
+            file_path = system_disk.find('source').attrib['file']
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+    @classmethod
+    def reset_password(cls, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainSetUserPassword
+        guest.setUserPassword(msg['user'], msg['password'])
+
+    @classmethod
+    def attach_disk(cls, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        if 'xml' not in msg:
+            _log = u'添加磁盘缺少 xml 参数'
+            raise KeyError(_log)
+
+        flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+        if guest.isActive():
+            flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainAttachDeviceFlags
+        guest.attachDeviceFlags(xml=msg['xml'], flags=flags)
+        cls.quota(guest=guest, msg=msg)
+
+    @classmethod
+    def detach_disk(cls, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        if 'xml' not in msg:
+            _log = u'分离磁盘缺少 xml 参数'
+            raise KeyError(_log)
+
+        flags = libvirt.VIR_DOMAIN_AFFECT_CONFIG
+        if guest.isActive():
+            flags |= libvirt.VIR_DOMAIN_AFFECT_LIVE
+
+        # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainDetachDeviceFlags
+        guest.detachDeviceFlags(xml=msg['xml'], flags=flags)
+
     @staticmethod
     def quota(guest=None, msg=None):
         assert isinstance(guest, libvirt.virDomain)
@@ -339,6 +477,11 @@ class Guest(object):
     def update_ssh_key(guest=None, msg=None):
         assert isinstance(guest, libvirt.virDomain)
         assert isinstance(msg, dict)
+
+        if not guest.isActive():
+            _log = u'欲更新 SSH-KEY 的目标虚拟机未处于活动状态。'
+            log_emit.warn(_log)
+            return
 
         from utils import QGA
 
@@ -629,4 +772,66 @@ class Guest(object):
             log_emit.error(traceback.format_exc())
             response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
+    def migrate(self, guest=None, msg=None):
+        assert isinstance(guest, libvirt.virDomain)
+        assert isinstance(msg, dict)
+
+        # duri like qemu+ssh://destination_host/system
+        if 'duri' not in msg:
+            _log = u'迁移操作缺少 duri 参数'
+            raise KeyError(_log)
+
+        # https://rk4n.github.io/2016/08/10/qemu-post-copy-and-auto-converge-features/
+        flags = libvirt.VIR_MIGRATE_PERSIST_DEST | \
+            libvirt.VIR_MIGRATE_UNDEFINE_SOURCE | \
+            libvirt.VIR_MIGRATE_COMPRESSED | \
+            libvirt.VIR_MIGRATE_PEER2PEER | \
+            libvirt.VIR_MIGRATE_AUTO_CONVERGE
+
+        root = ET.fromstring(guest.XMLDesc())
+
+        if msg['storage_mode'] == StorageMode.local.value:
+            # 需要把磁盘存放路径加入到两边宿主机的存储池中
+            # 不然将会报 no storage pool with matching target path '/opt/Images' 错误
+            flags |= libvirt.VIR_MIGRATE_NON_SHARED_DISK
+            flags |= libvirt.VIR_MIGRATE_LIVE
+
+            if not guest.isActive():
+                _log = u'非共享存储不支持离线迁移。'
+                log_emit.error(_log)
+                raise RuntimeError('Nonsupport offline migrate with storage of non sharing mode.')
+
+            if self.init_ssh_client(hostname=msg['duri'].split('/')[2], user='root'):
+                for _disk in root.findall('devices/disk'):
+                    _file_path = _disk.find('source').get('file')
+                    disk_info = Disk.disk_info_by_local(image_path=_file_path)
+                    disk_size = disk_info['virtual-size']
+                    stdin, stdout, stderr = self.ssh_client.exec_command(
+                        ' '.join(['qemu-img', 'create', '-f', 'qcow2', _file_path, str(disk_size)]))
+
+                    for line in stdout:
+                        log_emit.info(line)
+
+                    for line in stderr:
+                        log_emit.error(line)
+
+        elif msg['storage_mode'] in [StorageMode.shared_mount.value, StorageMode.ceph.value,
+                                     StorageMode.glusterfs.value]:
+            if guest.isActive():
+                flags |= libvirt.VIR_MIGRATE_LIVE
+                flags |= libvirt.VIR_MIGRATE_TUNNELLED
+
+            else:
+                flags |= libvirt.VIR_MIGRATE_OFFLINE
+
+        if guest.migrateToURI(duri=msg['duri'], flags=flags) == 0:
+            if msg['storage_mode'] == StorageMode.local.value:
+                for _disk in root.findall('devices/disk'):
+                    _file_path = _disk.find('source').get('file')
+                    if _file_path is not None:
+                        os.remove(_file_path)
+
+        else:
+            raise RuntimeError('Unknown storage mode.')
 
