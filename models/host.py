@@ -6,7 +6,6 @@ import os
 import time
 import traceback
 import Queue
-import redis
 import libvirt
 import json
 import jimit as ji
@@ -15,17 +14,14 @@ import xml.etree.ElementTree as ET
 import psutil
 import cpuinfo
 import dmidecode
-import paramiko
 import threading
 import libvirt_qemu
-
 
 from initialize import config, logger, r, log_emit, response_emit, host_event_emit, guest_collection_performance_emit, \
     threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest, q_booting_guest
 from guest import Guest
-from disk import Disk
+from storage import Storage
 from utils import Utils, QGA
-from status import StorageMode
 
 
 __author__ = 'James Iter'
@@ -37,8 +33,8 @@ __copyright__ = '(c) 2017 by James Iter.'
 class Host(object):
     def __init__(self):
         self.conn = None
-        self.guest = None
-        self.guest_mapping_by_uuid = dict()
+        self.dom = None
+        self.dom_mapping_by_uuid = dict()
         self.hostname = ji.Common.get_hostname()
         # 根据 hostname 生成的 node_id
         self.node_id = Utils.uuid_by_decimal(_str=self.hostname, _len=16)
@@ -56,25 +52,17 @@ class Host(object):
         self.last_guest_traffic = dict()
         self.last_guest_disk_io = dict()
         self.ts = ji.Common.ts()
-        self.ssh_client = None
 
     def init_conn(self):
         if self.conn is None:
             self.conn = libvirt.open()
 
-    def init_ssh_client(self, hostname, user):
-        self.ssh_client = paramiko.SSHClient()
-        self.ssh_client.load_system_host_keys()
-        self.ssh_client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
-        self.ssh_client.connect(hostname=hostname, username=user)
-        return True
-
-    def refresh_guest_mapping(self):
+    def refresh_dom_mapping(self):
         # 调用该方法的函数，都为单独的对象实例。即不存在多线程共用该方法，故而不用加多线程锁
-        self.guest_mapping_by_uuid.clear()
+        self.dom_mapping_by_uuid.clear()
         try:
-            for guest in self.conn.listAllDomains():
-                self.guest_mapping_by_uuid[guest.UUIDString()] = guest
+            for dom in self.conn.listAllDomains():
+                self.dom_mapping_by_uuid[dom.UUIDString()] = dom
         except libvirt.libvirtError as e:
             # 尝试重连 Libvirtd
             self.init_conn()
@@ -93,10 +81,8 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['instruction_process_engine'] = dict()
-            threads_status['instruction_process_engine']['timestamp'] = ji.Common.ts()
+            threads_status['instruction_process_engine'] = {'timestamp': ji.Common.ts()}
 
-            # noinspection PyBroadException
             try:
                 msg = ps.get_message(timeout=config['engine_cycle_interval'])
 
@@ -129,20 +115,10 @@ class Host(object):
 
                 if msg['_object'] == 'guest':
 
-                    self.refresh_guest_mapping()
+                    self.refresh_dom_mapping()
                     if msg['action'] not in ['create']:
-
-                        if msg['uuid'] not in self.guest_mapping_by_uuid:
-
-                            if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                log_emit.debug(_log)
-
-                            raise RuntimeError('The uuid ' + msg['uuid'] + ' not found in current domains list.')
-
-                        self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-                        if not isinstance(self.guest, libvirt.virDomain):
-                            raise RuntimeError('Guest ' + msg['uuid'] + ' is not a domain.')
+                        self.dom = self.dom_mapping_by_uuid[msg['uuid']]
+                        assert isinstance(self.dom, libvirt.virDomain)
 
                     if msg['action'] == 'create':
                         t = threading.Thread(target=Guest.create, args=(self.conn, msg))
@@ -151,246 +127,146 @@ class Host(object):
                         continue
 
                     elif msg['action'] == 'reboot':
-                        Guest.reboot(guest=self.guest)
+                        Guest.reboot(dom=self.dom)
 
                     elif msg['action'] == 'force_reboot':
-                        Guest.force_reboot(guest=self.guest, msg=msg)
+                        Guest.force_reboot(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'shutdown':
-                        Guest.shutdown(guest=self.guest)
+                        Guest.shutdown(dom=self.dom)
 
                     elif msg['action'] == 'force_shutdown':
-                        Guest.force_shutdown(guest=self.guest)
+                        Guest.force_shutdown(dom=self.dom)
 
                     elif msg['action'] == 'boot':
-                        Guest.boot(guest=self.guest, msg=msg)
+                        Guest.boot(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'suspend':
-                        Guest.suspend(guest=self.guest)
+                        Guest.suspend(dom=self.dom)
 
                     elif msg['action'] == 'resume':
-                        Guest.resume(guest=self.guest)
+                        Guest.resume(dom=self.dom)
 
                     elif msg['action'] == 'delete':
-                        Guest.delete(guest=self.guest, msg=msg)
+                        Guest.delete(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'reset_password':
-                        Guest.reset_password(guest=self.guest, msg=msg)
+                        Guest.reset_password(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'attach_disk':
-                        Guest.attach_disk(guest=self.guest, msg=msg)
+                        Guest.attach_disk(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'detach_disk':
-                        Guest.detach_disk(guest=self.guest, msg=msg)
+                        Guest.detach_disk(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'update_ssh_key':
-                        Guest.update_ssh_key(guest=self.guest, msg=msg)
+                        Guest.update_ssh_key(dom=self.dom, msg=msg)
 
                     elif msg['action'] == 'allocate_bandwidth':
-                        t = threading.Thread(target=Guest.allocate_bandwidth, args=(self.guest, msg))
+                        t = threading.Thread(target=Guest.allocate_bandwidth, args=(self.dom, msg))
                         t.setDaemon(False)
                         t.start()
                         continue
 
                     elif msg['action'] == 'adjust_ability':
-                        t = threading.Thread(target=Guest.adjust_ability, args=(self.conn, self.guest, msg))
+                        t = threading.Thread(target=Guest.adjust_ability, args=(self.dom, msg))
                         t.setDaemon(False)
                         t.start()
                         continue
 
                     elif msg['action'] == 'migrate':
-                        Guest().migrate(guest=self.guest, msg=msg)
+                        Guest().migrate(dom=self.dom, msg=msg)
 
                 elif msg['_object'] == 'disk':
+
                     if msg['action'] == 'create':
-
-                        if msg['storage_mode'] == StorageMode.glusterfs.value:
-                            Guest.dfs_volume = msg['dfs_volume']
-                            Guest.init_gfapi()
-
-                            if not Disk.make_qemu_image_by_glusterfs(gf=Guest.gf, dfs_volume=msg['dfs_volume'],
-                                                                     image_path=msg['image_path'], size=msg['size']):
-                                raise RuntimeError('Create disk failure with glusterfs.')
-
-                        elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
-                            if not Disk.make_qemu_image_by_local(image_path=msg['image_path'], size=msg['size']):
-                                raise RuntimeError('Create disk failure with local storage mode.')
+                        Storage(storage_mode=msg['storage_mode'], dfs_volume=msg['dfs_volume']).make_image(
+                            path=msg['image_path'], size=msg['size'])
 
                     elif msg['action'] == 'delete':
-
-                        if msg['storage_mode'] == StorageMode.glusterfs.value:
-                            Guest.dfs_volume = msg['dfs_volume']
-                            Guest.init_gfapi()
-
-                            if Disk.delete_qemu_image_by_glusterfs(gf=Guest.gf, image_path=msg['image_path']) \
-                                    is not None:
-                                raise RuntimeError('Delete disk failure with glusterfs.')
-
-                        elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
-                            if Disk.delete_qemu_image_by_local(image_path=msg['image_path']) is not None:
-                                raise RuntimeError('Delete disk failure with local storage mode.')
+                        Storage(storage_mode=msg['storage_mode'], dfs_volume=msg['dfs_volume']).delete_image(
+                            path=msg['image_path'])
 
                     elif msg['action'] == 'resize':
+                        mounted = True if msg['guest_uuid'].__len__() == 36 else False
 
-                        if 'size' not in msg:
-                            _log = u'添加磁盘缺少 disk 或 disk["size"] 参数'
-                            raise KeyError(_log)
-
-                        used = False
-
-                        if msg['guest_uuid'].__len__() == 36:
-                            used = True
-
-                        if used:
-                            self.refresh_guest_mapping()
-
-                            if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
-
-                                if config['DEBUG']:
-                                    _log = u' '.join([u'uuid', msg['uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                    log_emit.debug(_log)
-
-                                raise RuntimeError('Resize disk failure, because the uuid ' + msg['guest_uuid'] +
-                                                   ' not found in current domains.')
-
-                            self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
-                            if not isinstance(self.guest, libvirt.virDomain):
-                                raise RuntimeError('Resize disk failure, because the guest is not a domain.')
+                        if mounted:
+                            self.refresh_dom_mapping()
+                            self.dom = self.dom_mapping_by_uuid[msg['guest_uuid']]
 
                         # 在线磁盘扩容
-                        if used and self.guest.isActive():
-                                if 'device_node' not in msg:
-                                    _log = u'添加磁盘缺少 disk 或 disk["device_node|size"] 参数'
-                                    raise KeyError(_log)
+                        if mounted and self.dom.isActive():
+                            # 磁盘大小默认单位为KB，乘以两个 1024，使其单位达到 GiB
+                            msg['size'] = int(msg['size']) * 1024 * 1024
 
-                                # 磁盘大小默认单位为KB，乘以两个 1024，使其单位达到GB
-                                msg['size'] = int(msg['size']) * 1024 * 1024
-
-                                if self.guest.blockResize(disk=msg['device_node'], size=msg['size']) != 0:
-                                    raise RuntimeError('Online resize disk failure in blockResize method.')
-
-                                Guest.quota(guest=self.guest, msg=msg)
+                            # https://libvirt.org/html/libvirt-libvirt-domain.html#virDomainBlockResize
+                            self.dom.blockResize(disk=msg['device_node'], size=msg['size'])
+                            Guest.quota(dom=self.dom, msg=msg)
 
                         # 离线磁盘扩容
                         else:
-                            if not all([key in msg for key in ['storage_mode', 'dfs_volume', 'image_path']]):
-                                _log = u'添加磁盘缺少 disk 或 disk["storage_mode|dfs_volume|image_path|size"] 参数'
-                                raise KeyError(_log)
-
-                            if msg['storage_mode'] == StorageMode.glusterfs.value:
-                                if not Disk.resize_qemu_image_by_glusterfs(dfs_volume=msg['dfs_volume'],
-                                                                           image_path=msg['image_path'],
-                                                                           size=msg['size']):
-                                    raise RuntimeError('Offline resize disk failure with glusterfs.')
-
-                            elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
-                                if not Disk.resize_qemu_image_by_local(image_path=msg['image_path'], size=msg['size']):
-                                    raise RuntimeError('Offline resize disk failure with local storage mode.')
+                            Storage(storage_mode=msg['storage_mode'], dfs_volume=msg['dfs_volume']).resize_image(
+                                path=msg['image_path'], size=msg['size'])
 
                     elif msg['action'] == 'quota':
-                        self.refresh_guest_mapping()
-                        if msg['guest_uuid'] not in self.guest_mapping_by_uuid:
-
-                            if config['DEBUG']:
-                                _log = u' '.join([u'uuid', msg['guest_uuid'], u'在计算节点', self.hostname, u'中未找到.'])
-                                log_emit.debug(_log)
-
-                            raise RuntimeError('Disk quota failure, because the uuid ' + msg['guest_uuid'] +
-                                               ' not found in current domains.')
-
-                        self.guest = self.guest_mapping_by_uuid[msg['guest_uuid']]
-                        if not isinstance(self.guest, libvirt.virDomain):
-                            raise RuntimeError('Disk quota failure, because the guest is not a domain.')
-
-                        if not self.guest.isActive():
-                            _log = u'磁盘 ' + msg['uuid'] + u' 所属虚拟机未处于活动状态。'
-                            log_emit.warn(_log)
-                            continue
-
-                        Guest.quota(guest=self.guest, msg=msg)
+                        self.refresh_dom_mapping()
+                        self.dom = self.dom_mapping_by_uuid[msg['guest_uuid']]
+                        Guest.quota(dom=self.dom, msg=msg)
 
                 elif msg['_object'] == 'snapshot':
 
-                    self.refresh_guest_mapping()
-                    if msg['uuid'] not in self.guest_mapping_by_uuid:
-                        raise RuntimeError('Snapshot ' + msg['action'] + ' failure, because the uuid ' +
-                                           msg['uuid'] + ' not found in current domains.')
-
-                    self.guest = self.guest_mapping_by_uuid[msg['uuid']]
-                    assert isinstance(self.guest, libvirt.virDomain)
+                    self.refresh_dom_mapping()
+                    self.dom = self.dom_mapping_by_uuid[msg['uuid']]
 
                     if msg['action'] == 'create':
-
-                        t = threading.Thread(target=Guest.create_snapshot, args=(self.guest, msg))
+                        t = threading.Thread(target=Guest.create_snapshot, args=(self.dom, msg))
                         t.setDaemon(False)
                         t.start()
                         continue
 
                     elif msg['action'] == 'delete':
-
-                        t = threading.Thread(target=Guest.delete_snapshot, args=(self.guest, msg))
+                        t = threading.Thread(target=Guest.delete_snapshot, args=(self.dom, msg))
                         t.setDaemon(False)
                         t.start()
                         continue
 
                     elif msg['action'] == 'revert':
-
-                        t = threading.Thread(target=Guest.revert_snapshot, args=(self.guest, msg))
+                        t = threading.Thread(target=Guest.revert_snapshot, args=(self.dom, msg))
                         t.setDaemon(False)
                         t.start()
                         continue
 
                     elif msg['action'] == 'convert':
-
                         t = threading.Thread(target=Guest.convert_snapshot, args=(msg,))
                         t.setDaemon(False)
                         t.start()
                         continue
 
                 elif msg['_object'] == 'os_template_image':
-
                     if msg['action'] == 'delete':
-                        if msg['storage_mode'] == StorageMode.glusterfs.value:
-                            Guest.dfs_volume = msg['dfs_volume']
-                            Guest.init_gfapi()
-
-                            try:
-                                Guest.gf.remove(msg['template_path'])
-                            except OSError:
-                                pass
-
-                        elif msg['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
-                            try:
-                                os.remove(msg['template_path'])
-                            except OSError:
-                                pass
+                        Storage(storage_mode=msg['storage_mode'], dfs_volume=msg['dfs_volume']).delete_image(
+                            path=msg['template_path'])
 
                 elif msg['_object'] == 'global':
                     if msg['action'] == 'refresh_guest_state':
-                        host_use_for_refresh_guest_state = Host()
-                        t = threading.Thread(target=host_use_for_refresh_guest_state.refresh_guest_state, args=())
+                        t = threading.Thread(target=Host().refresh_guest_state, args=())
                         t.setDaemon(False)
                         t.start()
                         continue
 
                 else:
-                    _log = u'未支持的 _object：' + msg['_object']
-                    log_emit.error(_log)
+                    err = u'未支持的 _object：' + msg['_object']
+                    log_emit.error(err)
 
                 response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                       data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
-            except redis.exceptions.ConnectionError as e:
-                logger.error(traceback.format_exc())
-                # 防止循环线程，在redis连接断开时，混水写入日志
-                time.sleep(5)
-
             except:
                 # 防止循环线程，在redis连接断开时，混水写入日志
-                time.sleep(5)
                 log_emit.error(traceback.format_exc())
                 response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                       passback_parameters=msg.get('passback_parameters'))
+                time.sleep(5)
 
     @staticmethod
     def guest_creating_progress_report_engine():
@@ -416,39 +292,22 @@ class Host(object):
                 except Queue.Empty as e:
                     pass
 
-                threads_status['guest_creating_progress_report_engine'] = dict()
-                threads_status['guest_creating_progress_report_engine']['timestamp'] = ji.Common.ts()
-
                 # 当有 Guest 被创建时，略微等待一下，避免复制模板的动作还没开始，就开始计算进度。这样会产生找不到镜像路径的异常。
                 time.sleep(1)
+
+                threads_status['guest_creating_progress_report_engine'] = {'timestamp': ji.Common.ts()}
 
                 for i, guest in enumerate(list_creating_guest):
 
                     template_path = guest['template_path']
-                    progress = 0
 
-                    if guest['storage_mode'] in [StorageMode.ceph.value, StorageMode.glusterfs.value]:
-                        if guest['storage_mode'] == StorageMode.glusterfs.value:
-                            if template_path not in template_size:
-                                Guest.dfs_volume = guest['dfs_volume']
-                                Guest.init_gfapi()
+                    storage = Storage(storage_mode=guest['storage_mode'], dfs_volume=guest['dfs_volume'])
 
-                                template_size[template_path] = float(Guest.gf.getsize(template_path))
+                    if template_path not in template_size:
+                        template_size[template_path] = float(storage.getsize(path=template_path))
 
-                            system_image_size = Guest.gf.getsize(guest['system_image_path'])
-                            progress = system_image_size / template_size[template_path]
-
-                    elif guest['storage_mode'] in [StorageMode.local.value, StorageMode.shared_mount.value]:
-                        if template_path not in template_size:
-                            template_size[template_path] = float(os.path.getsize(template_path))
-
-                        system_image_size = os.path.getsize(guest['system_image_path'])
-                        progress = system_image_size / template_size[template_path]
-
-                    else:
-                        del list_creating_guest[i]
-                        log = u' '.join([u'UUID: ', guest['uuid'], u'未支持的存储模式: ', str(guest['storage_mode'])])
-                        log_emit.error(log)
+                    system_image_size = storage.getsize(path=guest['system_image_path'])
+                    progress = system_image_size / template_size[template_path]
 
                     guest_event_emit.creating(uuid=guest['uuid'], progress=int(progress * 90))
 
@@ -525,8 +384,7 @@ class Host(object):
                 except Queue.Empty as e:
                     time.sleep(config['engine_cycle_interval'])
 
-                threads_status['guest_booting2running_report_engine'] = dict()
-                threads_status['guest_booting2running_report_engine']['timestamp'] = ji.Common.ts()
+                threads_status['guest_booting2running_report_engine'] = {'timestamp': ji.Common.ts()}
 
                 for i, uuid in enumerate(list_booting_guest):
                     guest = self.conn.lookupByUUIDString(uuidstr=uuid)
@@ -539,7 +397,7 @@ class Host(object):
 
                     else:
                         time.sleep(config['engine_cycle_interval'])
-                        Guest.guest_state_report(guest=guest)
+                        Guest.guest_state_report(dom=guest)
 
                     del list_booting_guest[i]
 
@@ -564,11 +422,10 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['host_state_report_engine'] = dict()
-            threads_status['host_state_report_engine']['timestamp'] = ji.Common.ts()
-
             try:
                 time.sleep(config['engine_cycle_interval'])
+
+                threads_status['host_state_report_engine'] = {'timestamp': ji.Common.ts()}
 
                 # 一分钟做一次更新
                 if ji.Common.ts() % 60 == 0:
@@ -588,10 +445,10 @@ class Host(object):
     def refresh_guest_state(self):
         try:
             self.init_conn()
-            self.refresh_guest_mapping()
+            self.refresh_dom_mapping()
 
-            for guest in self.guest_mapping_by_uuid.values():
-                Guest.guest_state_report(guest)
+            for dom in self.dom_mapping_by_uuid.values():
+                Guest.guest_state_report(dom=dom)
 
         except:
             log_emit.error(traceback.format_exc())
@@ -600,13 +457,13 @@ class Host(object):
 
         data = list()
 
-        for _uuid, guest in self.guest_mapping_by_uuid.items():
+        for _uuid, dom in self.dom_mapping_by_uuid.items():
 
-            if not guest.isActive():
+            if not dom.isActive():
                 continue
 
-            _, _, _, cpu_count, _ = guest.info()
-            cpu_time2 = guest.getCPUStats(True)[0]['cpu_time']
+            _, _, _, cpu_count, _ = dom.info()
+            cpu_time2 = dom.getCPUStats(True)[0]['cpu_time']
 
             cpu_memory = dict()
 
@@ -622,9 +479,9 @@ class Host(object):
                 # https://libvirt.org/html/libvirt-libvirt-domain.html#VIR_DOMAIN_STATS_CPU_TOTAL
                 # https://stackoverflow.com/questions/40468370/what-does-cpu-time-represent-exactly-in-libvirt
 
-                memory_info = QGA.get_guest_memory_info(guest=guest)
+                memory_info = QGA.get_guest_memory_info(dom=dom)
 
-                memory_total = guest.maxMemory()
+                memory_total = dom.maxMemory()
                 memory_available = 0
                 memory_rate = 0
 
@@ -658,17 +515,17 @@ class Host(object):
 
         data = list()
 
-        for _uuid, guest in self.guest_mapping_by_uuid.items():
+        for _uuid, dom in self.dom_mapping_by_uuid.items():
 
-            if not guest.isActive():
+            if not dom.isActive():
                 continue
 
-            root = ET.fromstring(guest.XMLDesc())
+            root = ET.fromstring(dom.XMLDesc())
 
             for interface in root.findall('devices/interface'):
                 dev = interface.find('target').get('dev')
                 name = interface.find('alias').get('name')
-                interface_state = guest.interfaceStats(dev)
+                interface_state = dom.interfaceStats(dev)
 
                 interface_id = '_'.join([_uuid, dev])
 
@@ -712,12 +569,12 @@ class Host(object):
 
         data = list()
 
-        for _uuid, guest in self.guest_mapping_by_uuid.items():
+        for _uuid, dom in self.dom_mapping_by_uuid.items():
 
-            if not guest.isActive():
+            if not dom.isActive():
                 continue
 
-            root = ET.fromstring(guest.XMLDesc())
+            root = ET.fromstring(dom.XMLDesc())
 
             for disk in root.findall('devices/disk'):
                 dev = disk.find('target').get('dev')
@@ -735,7 +592,7 @@ class Host(object):
                     continue
 
                 disk_uuid = dev_path.split('/')[-1].split('.')[0]
-                disk_state = guest.blockStats(dev)
+                disk_state = dom.blockStats(dev)
 
                 disk_io = dict()
 
@@ -774,12 +631,10 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['guest_performance_collection_engine'] = dict()
-            threads_status['guest_performance_collection_engine']['timestamp'] = ji.Common.ts()
-            time.sleep(config['engine_cycle_interval'])
-            self.ts = ji.Common.ts()
-
             try:
+                time.sleep(config['engine_cycle_interval'])
+                threads_status['guest_performance_collection_engine'] = {'timestamp': ji.Common.ts()}
+                self.ts = ji.Common.ts()
 
                 if self.ts % self.interval != 0:
                     continue
@@ -798,7 +653,7 @@ class Host(object):
                         if (self.ts - v['timestamp']) > self.interval * 2:
                             del self.last_guest_disk_io[k]
 
-                self.refresh_guest_mapping()
+                self.refresh_dom_mapping()
 
                 self.guest_cpu_memory_performance_report()
                 self.guest_traffic_performance_report()
@@ -897,12 +752,10 @@ class Host(object):
                 logger.info(msg=msg)
                 return
 
-            threads_status['host_performance_collection_engine'] = dict()
-            threads_status['host_performance_collection_engine']['timestamp'] = ji.Common.ts()
-            time.sleep(config['engine_cycle_interval'])
-            self.ts = ji.Common.ts()
-
             try:
+                time.sleep(config['engine_cycle_interval'])
+                threads_status['host_performance_collection_engine'] = {'timestamp': ji.Common.ts()}
+                self.ts = ji.Common.ts()
 
                 if self.ts % self.interval != 0:
                     continue

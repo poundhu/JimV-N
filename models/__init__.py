@@ -24,8 +24,8 @@ from guest import (
     Guest
 )
 
-from disk import (
-    Disk
+from storage import (
+    Storage
 )
 
 from host import (
@@ -44,7 +44,7 @@ __copyright__ = '(c) 2017 by James Iter.'
 
 
 __all__ = [
-    'Init', 'Guest', 'Disk', 'Host', 'Utils', 'QGA', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel',
+    'Init', 'Guest', 'Storage', 'Host', 'Utils', 'QGA', 'Emit', 'EmitKind', 'GuestState', 'HostEvent', 'LogLevel',
     'ResponseState', 'GuestCollectionPerformanceDataKind', 'HostCollectionPerformanceDataKind', 'PidFile'
 ]
 

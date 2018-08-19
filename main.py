@@ -35,9 +35,8 @@ def main():
     signal.signal(signal.SIGTERM, Utils.signal_handle)
     signal.signal(signal.SIGINT, Utils.signal_handle)
 
-    host_use_for_guest_creating_progress_report_engine = Host()
     t_ = threading.Thread(
-        target=host_use_for_guest_creating_progress_report_engine.guest_creating_progress_report_engine, args=())
+        target=Host().guest_creating_progress_report_engine, args=())
     threads.append(t_)
 
 #     host_use_for_guest_booting2running_report_engine = Host()
@@ -45,33 +44,23 @@ def main():
 #         target=host_use_for_guest_booting2running_report_engine.guest_booting2running_report_engine, args=())
 #     threads.append(t_)
 
-    host_use_for_instruction_process_engine = Host()
-    t_ = threading.Thread(target=host_use_for_instruction_process_engine.instruction_process_engine, args=())
+    t_ = threading.Thread(target=Host().instruction_process_engine, args=())
     threads.append(t_)
 
-    host_use_for_host_state_report_engine = Host()
-    t_ = threading.Thread(target=host_use_for_host_state_report_engine.host_state_report_engine, args=())
+    t_ = threading.Thread(target=Host().host_state_report_engine, args=())
     threads.append(t_)
 
-    host_use_for_guest_performance_collection_engine = Host()
-    t_ = threading.Thread(
-        target=host_use_for_guest_performance_collection_engine.guest_performance_collection_engine,
-        args=())
+    t_ = threading.Thread(target=Host().guest_performance_collection_engine, args=())
     threads.append(t_)
 
-    host_use_for_host_performance_collection_engine = Host()
-    t_ = threading.Thread(
-        target=
-        host_use_for_host_performance_collection_engine.host_performance_collection_engine,
-        args=())
+    t_ = threading.Thread(target=Host().host_performance_collection_engine, args=())
     threads.append(t_)
 
     vir_event_loop_poll_register()
     t_ = threading.Thread(target=vir_event_loop_poll_run, name="libvirtEventLoop")
     threads.append(t_)
 
-    host_use_for_refresh_guest_state = Host()
-    host_use_for_refresh_guest_state.refresh_guest_state()
+    Host().refresh_guest_state()
 
     for t in threads:
         t.setDaemon(True)

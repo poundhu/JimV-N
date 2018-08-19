@@ -35,7 +35,7 @@ class EventProcess(object):
             # Guest 从本宿主机迁出完成后不做状态通知
             return
 
-        Guest.guest_state_report(guest=guest)
+        Guest.guest_state_report(dom=guest)
 
         if event == libvirt.VIR_DOMAIN_EVENT_DEFINED:
             if detail == libvirt.VIR_DOMAIN_EVENT_DEFINED_ADDED:
@@ -202,11 +202,11 @@ class EventProcess(object):
 
     @staticmethod
     def guest_event_device_added_callback(conn, guest, dev, opaque):
-        Guest.update_xml(guest=guest)
+        Guest.update_xml(dom=guest)
 
     @staticmethod
     def guest_event_device_removed_callback(conn, guest, dev, opaque):
-        Guest.update_xml(guest=guest)
+        Guest.update_xml(dom=guest)
 
     @classmethod
     def guest_event_register(cls):

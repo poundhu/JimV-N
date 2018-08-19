@@ -11,6 +11,7 @@ import json
 import redis
 import time
 import base64
+import paramiko
 
 import libvirt
 import libvirt_qemu
@@ -61,16 +62,26 @@ class Utils(object):
         import string
         return int(string.atoi(cls.md5(_str=_str), 16).__str__()[:_len])
 
+    @staticmethod
+    def ssh_client(hostname, user):
+        ssh_client = paramiko.SSHClient()
+        ssh_client.load_system_host_keys()
+        ssh_client.set_missing_host_key_policy(paramiko.MissingHostKeyPolicy())
+        ssh_client.connect(hostname=hostname, username=user)
+        return ssh_client
+
 
 class QGA(object):
 
     @staticmethod
-    def get_guest_exec_status(guest, pid):
+    def get_guest_exec_status(dom=None, pid=None):
+        assert isinstance(dom, libvirt.virDomain)
+
         ret = '{"return":{"exited":false}}'
 
         i = 0
         while not json.loads(ret)['return']['exited'] and i < 1000:
-            ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+            ret = libvirt_qemu.qemuAgentCommand(dom, json.dumps({
                       'execute': 'guest-exec-status',
                       'arguments': {
                           'pid': pid
@@ -85,11 +96,13 @@ class QGA(object):
         return ret
 
     @staticmethod
-    def get_guest_memory_info(guest):
+    def get_guest_memory_info(dom=None):
+        assert isinstance(dom, libvirt.virDomain)
+
         memory_info = dict()
 
         try:
-            exec_ret = libvirt_qemu.qemuAgentCommand(guest, json.dumps({
+            exec_ret = libvirt_qemu.qemuAgentCommand(dom, json.dumps({
                            'execute': 'guest-exec',
                            'arguments': {
                                'path': 'cat',
@@ -104,7 +117,7 @@ class QGA(object):
 
             exec_ret = json.loads(exec_ret)
 
-            status_ret = QGA.get_guest_exec_status(guest=guest, pid=exec_ret['return']['pid'])
+            status_ret = QGA.get_guest_exec_status(dom=dom, pid=exec_ret['return']['pid'])
 
             memory_info_str = base64.b64decode(json.loads(status_ret)['return']['out-data'])
 
