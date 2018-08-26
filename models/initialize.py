@@ -147,7 +147,6 @@ logger = Init.init_logger()
 r = Init.redis_init_conn()
 assert isinstance(r, redis.StrictRedis)
 q_creating_guest = Queue.Queue()
-q_booting_guest = Queue.Queue()
 
 host_cpu_count = multiprocessing.cpu_count()
 

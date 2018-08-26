@@ -25,9 +25,9 @@ class EventProcess(object):
         pass
 
     @classmethod
-    def guest_event_callback(cls, conn, guest, event, detail, opaque):
+    def guest_event_callback(cls, conn, dom, event, detail, opaque):
 
-        if not isinstance(guest, libvirt.virDomain):
+        if not isinstance(dom, libvirt.virDomain):
             # 跳过已经不再本宿主机的 guest
             return
 
@@ -35,7 +35,7 @@ class EventProcess(object):
             # Guest 从本宿主机迁出完成后不做状态通知
             return
 
-        Guest.guest_state_report(dom=guest)
+        Guest.guest_state_report(dom=dom)
 
         if event == libvirt.VIR_DOMAIN_EVENT_DEFINED:
             if detail == libvirt.VIR_DOMAIN_EVENT_DEFINED_ADDED:
@@ -186,27 +186,27 @@ class EventProcess(object):
             pass
 
     @staticmethod
-    def guest_event_migration_iteration_callback(conn, guest, iteration, opaque):
+    def guest_event_migration_iteration_callback(conn, dom, iteration, opaque):
         try:
             migrate_info = dict()
             migrate_info['type'], migrate_info['time_elapsed'], migrate_info['time_remaining'], \
                 migrate_info['data_total'], migrate_info['data_processed'], migrate_info['data_remaining'], \
                 migrate_info['mem_total'], migrate_info['mem_processed'], migrate_info['mem_remaining'], \
                 migrate_info['file_total'], migrate_info['file_processed'], migrate_info['file_remaining'] = \
-                guest.jobInfo()
+                dom.jobInfo()
 
-            guest_event_emit.migrating(uuid=guest.UUIDString(), migrating_info=migrate_info)
+            guest_event_emit.migrating(uuid=dom.UUIDString(), migrating_info=migrate_info)
 
         except libvirt.libvirtError as e:
             pass
 
     @staticmethod
-    def guest_event_device_added_callback(conn, guest, dev, opaque):
-        Guest.update_xml(dom=guest)
+    def guest_event_device_added_callback(conn, dom, dev, opaque):
+        Guest.update_xml(dom=dom)
 
     @staticmethod
-    def guest_event_device_removed_callback(conn, guest, dev, opaque):
-        Guest.update_xml(dom=guest)
+    def guest_event_device_removed_callback(conn, dom, dev, opaque):
+        Guest.update_xml(dom=dom)
 
     @classmethod
     def guest_event_register(cls):

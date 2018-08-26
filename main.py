@@ -39,10 +39,9 @@ def main():
         target=Host().guest_creating_progress_report_engine, args=())
     threads.append(t_)
 
-#     host_use_for_guest_booting2running_report_engine = Host()
-#     t_ = threading.Thread(
-#         target=host_use_for_guest_booting2running_report_engine.guest_booting2running_report_engine, args=())
-#     threads.append(t_)
+    t_ = threading.Thread(
+        target=Host().guest_state_report_engine, args=())
+    threads.append(t_)
 
     t_ = threading.Thread(target=Host().instruction_process_engine, args=())
     threads.append(t_)

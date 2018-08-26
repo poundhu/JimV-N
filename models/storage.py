@@ -27,11 +27,19 @@ class Storage(object):
     thread_mutex_lock = threading.Lock()
 
     def __init__(self, **kwargs):
-        self.storage_mode = kwargs.get('storage_mode', None)
-        self.dfs_volume = kwargs.get('dfs_volume', None)
+        self.set_storage_mode(storage_mode=kwargs.get('storage_mode', None))
+        self.set_dfs_volume(dfs_volume=kwargs.get('dfs_volume', None))
 
         if self.storage_mode == StorageMode.glusterfs.value:
             self.init_gfapi()
+
+    @classmethod
+    def set_storage_mode(cls, storage_mode):
+        cls.storage_mode = storage_mode
+
+    @classmethod
+    def set_dfs_volume(cls, dfs_volume):
+        cls.dfs_volume = dfs_volume
 
     @classmethod
     def init_gfapi(cls):

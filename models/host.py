@@ -15,10 +15,9 @@ import psutil
 import cpuinfo
 import dmidecode
 import threading
-import libvirt_qemu
 
 from initialize import config, logger, r, log_emit, response_emit, host_event_emit, guest_collection_performance_emit, \
-    threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest, q_booting_guest
+    threads_status, host_collection_performance_emit, guest_event_emit, q_creating_guest
 from guest import Guest
 from storage import Storage
 from utils import Utils, QGA
@@ -53,6 +52,8 @@ class Host(object):
         self.last_guest_disk_io = dict()
         self.ts = ji.Common.ts()
 
+        self.init_conn()
+
     def init_conn(self):
         if self.conn is None:
             self.conn = libvirt.open()
@@ -69,7 +70,6 @@ class Host(object):
 
     # 使用时，创建独立的实例来避开 多线程 的问题
     def instruction_process_engine(self):
-        self.init_conn()
 
         ps = r.pubsub(ignore_subscribe_messages=False)
         ps.subscribe(config['instruction_channel'])
@@ -342,64 +342,25 @@ class Host(object):
                 self.disks[disk.mountpoint]['real_device'] = os.path.realpath(disk.device)
 
     # 使用时，创建独立的实例来避开 多线程 的问题
-    def guest_booting2running_report_engine(self):
+    def guest_state_report_engine(self):
         """
-        Guest 启动到运行状态上报
+        Guest 状态上报引擎
         """
-        self.init_conn()
-        list_booting_guest = list()
-
-        def is_running(_guest):
-            running = False
-
-            try:
-                exec_ret = libvirt_qemu.qemuAgentCommand(_guest, json.dumps({
-                                'execute': 'guest-ping',
-                                'arguments': {
-                                }
-                            }),
-                            3,
-                            libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
-
-                running = True
-
-            except:
-                logger.error(traceback.format_exc())
-
-            return running
-
         while True:
             if Utils.exit_flag:
-                msg = 'Thread guest_booting2running_report_engine say bye-bye'
+                msg = 'Thread guest_state_report_engine say bye-bye'
                 print msg
                 logger.info(msg=msg)
                 return
 
-            # noinspection PyBroadException
             try:
-                try:
-                    payload = q_booting_guest.get(timeout=config['engine_cycle_interval'])
-                    list_booting_guest.append(payload)
-                    q_booting_guest.task_done()
-                except Queue.Empty as e:
-                    time.sleep(config['engine_cycle_interval'])
+                # 10 秒钟更新一次
+                time.sleep(config['engine_cycle_interval'] * 10)
+                threads_status['guest_state_report_engine'] = {'timestamp': ji.Common.ts()}
+                self.refresh_dom_mapping()
 
-                threads_status['guest_booting2running_report_engine'] = {'timestamp': ji.Common.ts()}
-
-                for i, uuid in enumerate(list_booting_guest):
-                    guest = self.conn.lookupByUUIDString(uuidstr=uuid)
-                    log = u' '.join([u'域', guest.name(), u', UUID', uuid, u'的状态改变为'])
-
-                    if guest is not None and guest.isActive() and is_running(_guest=guest):
-                        log += u' Running。'
-                        guest_event_emit.running(uuid=uuid)
-                        log_emit.info(log)
-
-                    else:
-                        time.sleep(config['engine_cycle_interval'])
-                        Guest.guest_state_report(dom=guest)
-
-                    del list_booting_guest[i]
+                for dom in self.dom_mapping_by_uuid.values():
+                    Guest.guest_state_report(dom=dom)
 
             except:
                 log_emit.error(traceback.format_exc())
@@ -444,7 +405,6 @@ class Host(object):
 
     def refresh_guest_state(self):
         try:
-            self.init_conn()
             self.refresh_dom_mapping()
 
             for dom in self.dom_mapping_by_uuid.values():
@@ -622,7 +582,6 @@ class Host(object):
             guest_collection_performance_emit.disk_io(data=data)
 
     def guest_performance_collection_engine(self):
-        self.init_conn()
 
         while True:
             if Utils.exit_flag:

@@ -18,7 +18,7 @@ import libvirt_qemu
 import json
 import base64
 
-from initialize import log_emit, guest_event_emit, q_creating_guest, q_booting_guest, response_emit
+from initialize import log_emit, guest_event_emit, q_creating_guest, response_emit
 from models.jimvn_exception import CommandExecFailed
 from models.status import OSTemplateInitializeOperateKind, StorageMode
 from models.utils import Utils
@@ -126,7 +126,24 @@ class Guest(object):
 
     @staticmethod
     def guest_state_report(dom=None):
-        # 使用uuid，重新获取
+        def is_running(_dom=None):
+            running = False
+
+            try:
+                exec_ret = libvirt_qemu.qemuAgentCommand(_dom, json.dumps({
+                                'execute': 'guest-ping',
+                                'arguments': {
+                                }
+                            }),
+                            3,
+                            libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+                running = True
+
+            except:
+                pass
+
+            return running
 
         try:
             assert isinstance(dom, libvirt.virDomain)
@@ -140,13 +157,14 @@ class Guest(object):
             log = u' '.join([u'域', dom.name(), u', UUID', _uuid, u'的状态改变为'])
 
             if state == libvirt.VIR_DOMAIN_RUNNING:
-                log += u' Running。'
-                guest_event_emit.running(uuid=_uuid)
 
-                # log += u' Booting。'
-                # guest_event_emit.booting(uuid=_uuid)
+                if is_running(_dom=dom):
+                    log += u' Running。'
+                    guest_event_emit.running(uuid=_uuid)
 
-                # q_booting_guest.put(guest)
+                else:
+                    log += u' Booting。'
+                    guest_event_emit.booting(uuid=_uuid)
 
             elif state == libvirt.VIR_DOMAIN_BLOCKED:
                 log += u' Blocked。'
@@ -193,8 +211,8 @@ class Guest(object):
         else:
             guest_event_emit.update(uuid=dom.UUIDString(), xml=xml)
 
-    @classmethod
-    def create(cls, conn, msg):
+    @staticmethod
+    def create(conn, msg):
         try:
             guest = Guest(uuid=msg['uuid'], name=msg['name'], template_path=msg['template_path'], disk=msg['disks'][0],
                           xml=msg['xml'], storage_mode=msg['storage_mode'], dfs_volume=msg['dfs_volume'])
@@ -231,7 +249,7 @@ class Guest(object):
             log = u' '.join([u'域', guest.name, u', UUID', guest.uuid, u'启动成功.'])
             log_emit.info(msg=log)
 
-            cls.quota(dom=dom, msg=msg)
+            Guest.quota(dom=dom, msg=msg)
 
             response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                   data=extend_data, passback_parameters=msg.get('passback_parameters'))
