@@ -263,6 +263,8 @@ class Guest(object):
             guest.generate_system_image()
 
             dom = guest.define_by_xml(conn=conn)
+            assert isinstance(dom, libvirt.virDomain)
+
             log = u' '.join([u'域', guest.name, u', UUID', guest.uuid, u'定义成功.'])
             log_emit.info(msg=log)
 

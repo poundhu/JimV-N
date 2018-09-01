@@ -57,7 +57,10 @@ class Host(object):
 
     def init_conn(self):
         if self.conn is None:
-            self.conn = libvirt.open()
+            try:
+                self.conn = libvirt.open()
+            except Exception as e:
+                logger.error(e.message)
 
     def refresh_dom_mapping(self):
         # 调用该方法的函数，都为单独的对象实例。即不存在多线程共用该方法，故而不用加多线程锁
@@ -67,6 +70,7 @@ class Host(object):
                 self.dom_mapping_by_uuid[dom.UUIDString()] = dom
         except libvirt.libvirtError as e:
             # 尝试重连 Libvirtd
+            logger.warn(e.message)
             self.init_conn()
 
     # 使用时，创建独立的实例来避开 多线程 的问题
@@ -83,6 +87,9 @@ class Host(object):
                 return
 
             threads_status['instruction_process_engine'] = {'timestamp': ji.Common.ts()}
+
+            msg = dict()
+            extend_data = dict()
 
             try:
                 msg = ps.get_message(timeout=config['engine_cycle_interval'])
@@ -112,8 +119,7 @@ class Host(object):
                 if not all([key in msg for key in ['_object', 'action']]):
                     continue
 
-                extend_data = dict()
-
+                logger.info(msg=msg)
                 if msg['_object'] == 'guest':
 
                     self.refresh_dom_mapping()
@@ -262,12 +268,19 @@ class Host(object):
                 response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
                                       data=extend_data, passback_parameters=msg.get('passback_parameters'))
 
+            except KeyError as e:
+                log_emit.warn(e.message)
+                if msg['_object'] == 'guest':
+                    if msg['action'] == 'delete':
+                        response_emit.success(_object=msg['_object'], action=msg['action'], uuid=msg['uuid'],
+                                              data=extend_data, passback_parameters=msg.get('passback_parameters'))
+
             except:
                 # 防止循环线程，在redis连接断开时，混水写入日志
+                time.sleep(5)
                 log_emit.error(traceback.format_exc())
                 response_emit.failure(_object=msg['_object'], action=msg.get('action'), uuid=msg.get('uuid'),
                                       passback_parameters=msg.get('passback_parameters'))
-                time.sleep(5)
 
     @staticmethod
     def guest_creating_progress_report_engine():
@@ -358,7 +371,7 @@ class Host(object):
 
             try:
                 # 10 秒钟更新一次
-                time.sleep(config['engine_cycle_interval'] * 10)
+                time.sleep(config['engine_cycle_interval'] * 3)
                 threads_status['guest_state_report_engine'] = {'timestamp': ji.Common.ts()}
                 self.refresh_dom_mapping()
 
