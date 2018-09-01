@@ -13,7 +13,7 @@ import time
 
 from models.initialize import logger, threads_status, config
 from models.event_process import EventProcess
-from models.event_loop import vir_event_loop_poll_register, vir_event_loop_poll_run
+from models.event_loop import vir_event_loop_poll_register, vir_event_loop_poll_run, eventLoop
 from models import Host
 from models import Utils
 from models import PidFile
@@ -64,6 +64,15 @@ def main():
     for t in threads:
         t.setDaemon(True)
         t.start()
+
+    i = 0
+    while not eventLoop.runningPoll and i <= 10:
+        """
+        避免在 timer 还没启动的时候，就去注册事件。那样会抛出如下异常：
+        libvirtError: internal error: could not initialize domain event timer
+        """
+        i += 1
+        time.sleep(1)
 
     EventProcess.guest_event_register()
 

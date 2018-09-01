@@ -23,6 +23,7 @@ from models.jimvn_exception import CommandExecFailed
 from models.status import OSTemplateInitializeOperateKind, StorageMode
 from models.utils import Utils
 from models.storage import Storage
+from models import GuestState
 
 
 __author__ = 'James Iter'
@@ -125,7 +126,7 @@ class Guest(object):
         dom.create()
 
     @staticmethod
-    def guest_state_report(dom=None):
+    def get_state(dom=None):
         def is_running(_dom=None):
             running = False
 
@@ -145,48 +146,82 @@ class Guest(object):
 
             return running
 
-        try:
-            assert isinstance(dom, libvirt.virDomain)
+        assert isinstance(dom, libvirt.virDomain)
 
+        _uuid = dom.UUIDString()
+        state, maxmem, mem, ncpu, cputime = dom.info()
+        # state 参考链接：
+        # http://libvirt.org/docs/libvirt-appdev-guide-python/en-US/html/libvirt_application_development_guide_using_python-Guest_Domains-Information-State.html
+        # http://stackoverflow.com/questions/4986076/alternative-to-virsh-libvirt
+
+        if state == libvirt.VIR_DOMAIN_RUNNING:
+
+            if is_running(_dom=dom):
+                state = GuestState.running.value
+
+            else:
+                state = GuestState.booting.value
+
+        elif state == libvirt.VIR_DOMAIN_BLOCKED:
+            state = GuestState.blocked.value
+
+        elif state == libvirt.VIR_DOMAIN_PAUSED:
+            state = GuestState.paused.value
+
+        elif state == libvirt.VIR_DOMAIN_SHUTDOWN:
+            state = GuestState.shutdown.value
+
+        elif state == libvirt.VIR_DOMAIN_SHUTOFF:
+            state = GuestState.shutoff.value
+
+        elif state == libvirt.VIR_DOMAIN_CRASHED:
+            state = GuestState.crashed.value
+
+        elif state == libvirt.VIR_DOMAIN_PMSUSPENDED:
+            state = GuestState.pm_suspended.value
+
+        else:
+            state = GuestState.no_state.value
+
+        return state
+
+    @staticmethod
+    def guest_state_report(dom=None):
+        try:
             _uuid = dom.UUIDString()
-            state, maxmem, mem, ncpu, cputime = dom.info()
-            # state 参考链接：
-            # http://libvirt.org/docs/libvirt-appdev-guide-python/en-US/html/libvirt_application_development_guide_using_python-Guest_Domains-Information-State.html
-            # http://stackoverflow.com/questions/4986076/alternative-to-virsh-libvirt
+            state = Guest.get_state(dom=dom)
 
             log = u' '.join([u'域', dom.name(), u', UUID', _uuid, u'的状态改变为'])
 
-            if state == libvirt.VIR_DOMAIN_RUNNING:
+            if state == GuestState.running.value:
+                log += u' Running。'
+                guest_event_emit.running(uuid=_uuid)
 
-                if is_running(_dom=dom):
-                    log += u' Running。'
-                    guest_event_emit.running(uuid=_uuid)
+            elif state == GuestState.booting.value:
+                log += u' Booting。'
+                guest_event_emit.booting(uuid=_uuid)
 
-                else:
-                    log += u' Booting。'
-                    guest_event_emit.booting(uuid=_uuid)
-
-            elif state == libvirt.VIR_DOMAIN_BLOCKED:
+            elif state == GuestState.blocked.value:
                 log += u' Blocked。'
                 guest_event_emit.blocked(uuid=_uuid)
 
-            elif state == libvirt.VIR_DOMAIN_PAUSED:
+            elif state == GuestState.paused.value:
                 log += u' Paused。'
                 guest_event_emit.paused(uuid=_uuid)
 
-            elif state == libvirt.VIR_DOMAIN_SHUTDOWN:
+            elif state == GuestState.shutdown.value:
                 log += u' Shutdown。'
                 guest_event_emit.shutdown(uuid=_uuid)
 
-            elif state == libvirt.VIR_DOMAIN_SHUTOFF:
+            elif state == GuestState.shutoff.value:
                 log += u' Shutoff。'
                 guest_event_emit.shutoff(uuid=_uuid)
 
-            elif state == libvirt.VIR_DOMAIN_CRASHED:
+            elif state == GuestState.crashed.value:
                 log += u' Crashed。'
                 guest_event_emit.crashed(uuid=_uuid)
 
-            elif state == libvirt.VIR_DOMAIN_PMSUSPENDED:
+            elif state == GuestState.pm_suspended.value:
                 log += u' PM_Suspended。'
                 guest_event_emit.pm_suspended(uuid=_uuid)
 

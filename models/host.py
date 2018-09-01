@@ -40,6 +40,7 @@ class Host(object):
         self.cpu = psutil.cpu_count()
         self.cpuinfo = cpuinfo.get_cpu_info()
         self.memory = psutil.virtual_memory().total
+        # 返回 json 格式数据
         self.dmidecode = dmidecode.QuerySection('all')
         self.interfaces = dict()
         self.disks = dict()
@@ -346,6 +347,8 @@ class Host(object):
         """
         Guest 状态上报引擎
         """
+        guest_state_mapping = dict()
+
         while True:
             if Utils.exit_flag:
                 msg = 'Thread guest_state_report_engine say bye-bye'
@@ -359,7 +362,13 @@ class Host(object):
                 threads_status['guest_state_report_engine'] = {'timestamp': ji.Common.ts()}
                 self.refresh_dom_mapping()
 
-                for dom in self.dom_mapping_by_uuid.values():
+                for uuid, dom in self.dom_mapping_by_uuid.items():
+                    state = Guest.get_state(dom=dom)
+
+                    if uuid in guest_state_mapping and guest_state_mapping[uuid] == state:
+                        continue
+
+                    guest_state_mapping[uuid] = state
                     Guest.guest_state_report(dom=dom)
 
             except:
