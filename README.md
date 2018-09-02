@@ -28,7 +28,7 @@
     ``` bash
     # 避免各种意外的 ssh 断开。如果遇到因网络问题而断开的意外，那么再次连接后，使用 screen -r 可以恢复到断开前的终端环境。
     yum install screen -y
-    echo 'termcapinfo xterm* ti@:te@' > .screenrc
+    echo 'termcapinfo xterm* ti@:te@' > ~/.screenrc
     screen
     curl https://raw.githubusercontent.com/jamesiter/JimV-N/master/INSTALL.sh | bash -s -- --redis_host {x.x.x.x} --redis_password {password} --redis_port {port}
     ```

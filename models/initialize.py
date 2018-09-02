@@ -34,9 +34,10 @@ class Init(object):
         'downstream_queue': 'Q:Downstream',
         'upstream_queue': 'Q:Upstream',
         'DEBUG': False,
-        'daemon': True,
+        'daemon': False,
         'pidfile': '/run/jimv/jimvn.pid',
-        'engine_cycle_interval': 1
+        'engine_cycle_interval': 1,
+        'version': '0.7'
     }
 
     @classmethod

@@ -59,8 +59,6 @@ def main():
     t_ = threading.Thread(target=vir_event_loop_poll_run, name="libvirtEventLoop")
     threads.append(t_)
 
-    Host().refresh_guest_state()
-
     for t in threads:
         t.setDaemon(True)
         t.start()

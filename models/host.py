@@ -8,6 +8,7 @@ import traceback
 import Queue
 import libvirt
 import json
+import subprocess
 import jimit as ji
 import xml.etree.ElementTree as ET
 
@@ -52,6 +53,7 @@ class Host(object):
         self.last_guest_traffic = dict()
         self.last_guest_disk_io = dict()
         self.ts = ji.Common.ts()
+        self.version = config['version']
 
         self.init_conn()
 
@@ -71,6 +73,7 @@ class Host(object):
         except libvirt.libvirtError as e:
             # 尝试重连 Libvirtd
             logger.warn(e.message)
+            logger.warn(libvirt.virGetLastErrorMessage())
             self.init_conn()
 
     # 使用时，创建独立的实例来避开 多线程 的问题
@@ -261,6 +264,12 @@ class Host(object):
                         t.start()
                         continue
 
+                    if msg['action'] == 'upgrade':
+                        pass
+
+                    if msg['action'] == 'restart':
+                        self.restart()
+
                 else:
                     err = u'未支持的 _object：' + msg['_object']
                     log_emit.error(err)
@@ -329,7 +338,7 @@ class Host(object):
                         del list_creating_guest[i]
 
             except:
-                log_emit.error(traceback.format_exc())
+                log_emit.warn(traceback.format_exc())
 
     def update_interfaces(self):
         self.interfaces.clear()
@@ -370,7 +379,7 @@ class Host(object):
                 return
 
             try:
-                # 10 秒钟更新一次
+                # 3 秒钟更新一次
                 time.sleep(config['engine_cycle_interval'] * 3)
                 threads_status['guest_state_report_engine'] = {'timestamp': ji.Common.ts()}
                 self.refresh_dom_mapping()
@@ -385,7 +394,7 @@ class Host(object):
                     Guest.guest_state_report(dom=dom)
 
             except:
-                log_emit.error(traceback.format_exc())
+                log_emit.warn(traceback.format_exc())
 
     # 使用时，创建独立的实例来避开 多线程 的问题
     def host_state_report_engine(self):
@@ -420,10 +429,10 @@ class Host(object):
                                                    'interfaces': self.interfaces, 'disks': self.disks,
                                                    'system_load': os.getloadavg(), 'boot_time': boot_time,
                                                    'memory_available': psutil.virtual_memory().available,
-                                                   'threads_status': threads_status})
+                                                   'threads_status': threads_status, 'version': self.version})
 
             except:
-                log_emit.error(traceback.format_exc())
+                log_emit.warn(traceback.format_exc())
 
     def refresh_guest_state(self):
         try:
@@ -433,7 +442,7 @@ class Host(object):
                 Guest.guest_state_report(dom=dom)
 
         except:
-            log_emit.error(traceback.format_exc())
+            log_emit.warn(traceback.format_exc())
 
     def guest_cpu_memory_performance_report(self):
 
@@ -641,7 +650,7 @@ class Host(object):
                 self.guest_disk_io_performance_report()
 
             except:
-                log_emit.error(traceback.format_exc())
+                log_emit.warn(traceback.format_exc())
 
     def host_cpu_memory_performance_report(self):
 
@@ -748,5 +757,9 @@ class Host(object):
                 self.host_disk_usage_io_performance_report()
 
             except:
-                log_emit.error(traceback.format_exc())
+                log_emit.warn(traceback.format_exc())
+
+    @staticmethod
+    def restart():
+        subprocess.call(['systemctl', 'restart', 'jimvn.service'])
 

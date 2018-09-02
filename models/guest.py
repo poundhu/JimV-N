@@ -233,7 +233,7 @@ class Guest(object):
             log_emit.info(log)
 
         except Exception as e:
-            log_emit.error(e.message)
+            log_emit.warn(e.message)
 
     @staticmethod
     def update_xml(dom):
@@ -758,7 +758,7 @@ class Guest(object):
 
             if not dom.isActive():
                 err = u'非共享存储不支持离线迁移。'
-                log_emit.error(err)
+                log_emit.warn(err)
                 raise RuntimeError('Nonsupport offline migrate with storage of non sharing mode.')
 
             ssh_client = Utils.ssh_client(hostname=msg['duri'].split('/')[2], user='root')
