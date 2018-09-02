@@ -265,7 +265,8 @@ class Host(object):
                         continue
 
                     if msg['action'] == 'upgrade':
-                        pass
+                        self.upgrade()
+                        self.restart()
 
                     if msg['action'] == 'restart':
                         self.restart()
@@ -762,4 +763,19 @@ class Host(object):
     @staticmethod
     def restart():
         subprocess.call(['systemctl', 'restart', 'jimvn.service'])
+
+    @staticmethod
+    def upgrade():
+        jimvn_path = '/usr/local/JimV-N'
+        backup_path = '/usr/local/JimV-N.bak'
+
+        if os.path.exists(backup_path):
+            os.removedirs(backup_path)
+
+        os.renames(jimvn_path, backup_path)
+
+        cmd = 'curl -sL https://github.com/jamesiter/JimV-N/archive/v0.6.tar.gz | ' \
+              'tar -zxf - --strip-components 1 -C /usr/local/JimV-N'
+
+        subprocess.call(cmd, shell=True)
 
