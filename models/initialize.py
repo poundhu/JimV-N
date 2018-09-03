@@ -37,7 +37,8 @@ class Init(object):
         'daemon': False,
         'pidfile': '/run/jimv/jimvn.pid',
         'engine_cycle_interval': 1,
-        'version': '0.7'
+        'version': '0.7',
+        'jimvn_path': '/usr/local/JimV-N'
     }
 
     @classmethod

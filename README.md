@@ -34,7 +34,7 @@
     ```
 3. 启动 JimV-N
     ``` bash
-    cd /opt/JimV-N && ./startup.sh
+    systemctl start jimvn.service
     ```
 
 

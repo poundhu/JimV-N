@@ -265,11 +265,21 @@ class Host(object):
                         continue
 
                     if msg['action'] == 'upgrade':
-                        self.upgrade()
-                        self.restart()
+                        try:
+                            log = self.upgrade(msg['url'])
+                            log_emit.info(msg=log)
+
+                        except subprocess.CalledProcessError as e:
+                            log_emit.warn(e.output)
+                            self.rollback()
+                            continue
+
+                        log = self.restart()
+                        log_emit.info(msg=log)
 
                     if msg['action'] == 'restart':
-                        self.restart()
+                        log = self.restart()
+                        log_emit.info(msg=log)
 
                 else:
                     err = u'未支持的 _object：' + msg['_object']
@@ -762,20 +772,31 @@ class Host(object):
 
     @staticmethod
     def restart():
-        subprocess.call(['systemctl', 'restart', 'jimvn.service'])
+        return subprocess.check_output(['systemctl', 'restart', 'jimvn.service'], stderr=subprocess.STDOUT)
 
     @staticmethod
-    def upgrade():
-        jimvn_path = '/usr/local/JimV-N'
-        backup_path = '/usr/local/JimV-N.bak'
+    def upgrade(url=None):
+        assert isinstance(url, basestring)
+
+        jimvn_path = config['jimvn_path']
+        backup_path = '.'.join([jimvn_path, 'bak'])
 
         if os.path.exists(backup_path):
             os.removedirs(backup_path)
 
         os.renames(jimvn_path, backup_path)
 
-        cmd = 'curl -sL https://github.com/jamesiter/JimV-N/archive/v0.6.tar.gz | ' \
-              'tar -zxf - --strip-components 1 -C /usr/local/JimV-N'
+        cmd = ' '.join(['curl -sL', url, '| tar -zxf - --strip-components 1 -C', jimvn_path])
 
-        subprocess.call(cmd, shell=True)
+        return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+
+    @staticmethod
+    def rollback():
+        jimvn_path = config['jimvn_path']
+        backup_path = '.'.join([jimvn_path, 'bak'])
+
+        if os.path.exists(jimvn_path):
+            os.removedirs(jimvn_path)
+
+        os.renames(backup_path, jimvn_path)
 

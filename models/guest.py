@@ -230,7 +230,7 @@ class Guest(object):
 
                 guest_event_emit.no_state(uuid=_uuid)
 
-            log_emit.info(log)
+            log_emit.info(msg=log)
 
         except Exception as e:
             log_emit.warn(e.message)

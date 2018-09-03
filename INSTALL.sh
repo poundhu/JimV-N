@@ -12,6 +12,7 @@
 export PYPI='https://mirrors.aliyun.com/pypi/simple/'
 export JIMVN_REPOSITORY_URL='https://github.com/jamesiter/JimV-N.git'
 export JIMVN_REPOSITORY_URL_CN='https://gitee.com/jimit/JimV-N.git'
+export JIMVN_DOWNLOAD_URL='https://github.com/jamesiter/JimV-N/archive/master.tar.gz'
 export COUNTRY=`curl http://iit.im/ip/country`
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export HOSTS_INFO='H:HostsInfo'
@@ -50,6 +51,7 @@ do
             ;;
         --version)
             export JIMV_VERSION=$2
+            export JIMVN_DOWNLOAD_URL=$(sed s@master@${JIMV_VERSION}@ <<< ${JIMVN_DOWNLOAD_URL})
             shift 2
             ;;
         -h|--help)
@@ -290,27 +292,35 @@ function start_libvirtd() {
 }
 
 function clone_and_checkout_JimVN() {
-    git clone ${JIMVN_REPOSITORY_URL} /opt/JimV-N
+    git clone ${JIMVN_REPOSITORY_URL} /usr/local/JimV-N
     if [ ! $? -eq 0 ]; then
         echo '克隆 JimV-N 失败，请检查网络可用性。'
         exit 1
     fi
 
     if [ ${JIMV_VERSION} != 'master' ]; then
-        cd /opt/JimV-N && git checkout ${JIMV_VERSION}
+        cd /usr/local/JimV-N && git checkout ${JIMV_VERSION}
     fi
+}
+
+function get_JimVN() {
+    mkdir -p /usr/local/JimV-N
+    curl -sL ${JIMVN_DOWNLOAD_URL} | tar -zxf - --strip-components 1 -C /usr/local/JimV-N
 }
 
 function install_dependencies_library() {
     # 安装 JimV-N 所需扩展库
-    pip install -r /opt/JimV-N/requirements.txt -i ${PYPI}
+    pip install -r /usr/local/JimV-N/requirements.txt -i ${PYPI}
 }
 
 function generate_config_file() {
-    cp -v /opt/JimV-N/jimvn.conf /etc/jimvn.conf
+    cp -v /usr/local/JimV-N/misc/jimvn.conf /etc/jimvn.conf
     sed -i "s/\"redis_host\".*$/\"redis_host\": \"${REDIS_HOST}\",/" /etc/jimvn.conf
     sed -i "s/\"redis_password\".*$/\"redis_password\": \"${REDIS_PSWD}\",/" /etc/jimvn.conf
     sed -i "s/\"redis_port\".*$/\"redis_port\": \"${REDIS_PORT}\",/" /etc/jimvn.conf
+
+    cp -v /usr/local/JimV-N/misc/jimvn.service /etc/systemd/system/jimvn.service
+    systemctl daemon-reload
 }
 
 function display_summary_information() {
@@ -324,8 +334,17 @@ function display_summary_information() {
         echo
     fi
 
-    echo "现在可以通过命令 'cd /opt/JimV-N && ./startup.sh' 启动运行 JimV-N。"
+    echo "现在可以通过命令 'systemctl start jimvn.service' 启动运行 JimV-N。"
+    echo "可通过 'systemctl enable jimvn.service' 把 JimV-N 注册为随系统启动服务。"
     echo
+}
+
+function is_installed {
+    if yum list installed "$@" >/dev/null 2>&1; then
+        true
+    else
+        false
+    fi
 }
 
 function deploy() {
@@ -334,11 +353,17 @@ function deploy() {
     custom_repository_origin
     clear_up_environment
     install_libvirt_and_libguestfish
+
+    if ! is_installed centos-release-qemu-ev; then
+      # 如果 centos-release-qemu-ev 没有被安装，则再给一次安装机会
+      install_libvirt_and_libguestfish
+    fi
+
     handle_ssh_client_config
     handle_net_bonding_bridge
     create_network_bridge_in_libvirt
     start_libvirtd
-    clone_and_checkout_JimVN
+    get_JimVN
     install_dependencies_library
     generate_config_file
     display_summary_information
