@@ -1,12 +1,11 @@
-enum34
-jimit
-redis
-libvirt-python
-gfapi
-psutil
+enum34==1.1.6
+jimit==0.63
+redis==2.10.6
+libvirt-python==4.6.0
+gfapi==1.2
+psutil==5.4.7
 # http://libguestfs.org/download/python/guestfs-1.36.2.tar.gz
-paramiko
-docutils
-python-daemon
-py-cpuinfo
-
+paramiko==2.4.2
+py-cpuinfo==4.0.0
+docutils==0.14
+python-daemon==2.2.0

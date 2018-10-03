@@ -310,7 +310,7 @@ function get_JimVN() {
 
 function install_dependencies_library() {
     # 安装 JimV-N 所需扩展库
-    pip install -r /usr/local/JimV-N/requirements.txt -i ${PYPI}
+    grep -v "^#" /usr/local/JimV-N/requirements.txt | xargs -n 1 pip install -i ${PYPI}
 }
 
 function generate_config_file() {
@@ -321,6 +321,11 @@ function generate_config_file() {
 
     cp -v /usr/local/JimV-N/misc/jimvn.service /etc/systemd/system/jimvn.service
     systemctl daemon-reload
+}
+
+function start_JimVN() {
+    systemctl start jimvn.service
+    systemctl enable jimvn.service
 }
 
 function display_summary_information() {
@@ -334,8 +339,8 @@ function display_summary_information() {
         echo
     fi
 
-    echo "现在可以通过命令 'systemctl start jimvn.service' 启动运行 JimV-N。"
-    echo "可通过 'systemctl enable jimvn.service' 把 JimV-N 注册为随系统启动服务。"
+    echo "已经通过 'systemctl enable jimvn.service' 把 JimV-N 注册为随系统启动的服务。"
+    echo "您还可以通过命令 'systemctl [start|stop|status] jimvn.service' 来管理本机的 JimV-N。"
     echo
 }
 
@@ -366,6 +371,7 @@ function deploy() {
     get_JimVN
     install_dependencies_library
     generate_config_file
+    start_JimVN
     display_summary_information
 }
 

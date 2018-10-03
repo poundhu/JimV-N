@@ -37,7 +37,7 @@ class Host(object):
         self.dom_mapping_by_uuid = dict()
         self.hostname = ji.Common.get_hostname()
         # 根据 hostname 生成的 node_id
-        self.node_id = Utils.uuid_by_decimal(_str=self.hostname, _len=16)
+        self.node_id = Utils.get_node_id()
         self.cpu = psutil.cpu_count()
         self.cpuinfo = cpuinfo.get_cpu_info()
         self.memory = psutil.virtual_memory().total

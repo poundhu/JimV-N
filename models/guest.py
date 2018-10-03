@@ -494,8 +494,9 @@ class Guest(object):
 
             exec_ret = json.loads(exec_ret)
             status_ret = QGA.get_guest_exec_status(dom=dom, pid=exec_ret['return']['pid'])
-            exec_ret_str = base64.b64decode(json.loads(status_ret)['return']['out-data'])
-            ret_s.append(json.loads(exec_ret_str))
+            # exec_ret_str = base64.b64decode(json.loads(status_ret)['return']['out-data'])
+            # ret_s.append(json.loads(exec_ret_str))
+            ret_s.append(status_ret)
 
         return ret_s
 

@@ -70,6 +70,16 @@ class Utils(object):
         ssh_client.connect(hostname=hostname, username=user)
         return ssh_client
 
+    @staticmethod
+    def get_machine_id():
+        with open('/etc/machine-id', 'r') as f:
+            return f.read().strip()
+
+    @classmethod
+    def get_node_id(cls):
+        machine_id = cls.get_machine_id()
+        return Utils.uuid_by_decimal(_str=machine_id, _len=16)
+
 
 class QGA(object):
 
@@ -146,7 +156,7 @@ class Emit(object):
         # 初始化时，host_event_report_queue 必须由具体实例来指定
         self.upstream_queue = None
         self.hostname = ji.Common.get_hostname()
-        self.node_id = Utils.uuid_by_decimal(_str=self.hostname, _len=16)
+        self.node_id = Utils.get_node_id()
         self.r = None
 
     def emit(self, _kind=None, _type=None, message=None):

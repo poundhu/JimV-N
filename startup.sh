@@ -9,5 +9,5 @@
 #  Start up the JimV-N.
 #
 
-python main.py
-
+systemctl start jimvn.service
+systemctl status jimvn.service -l
