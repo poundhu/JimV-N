@@ -309,6 +309,21 @@ function get_JimVN() {
 }
 
 function install_dependencies_library() {
+    mkdir -p ~/.pip
+    cat > ~/.pip/pip.conf << EOF
+[global]
+index-url = ${PYPI}
+EOF
+
+    # 创建 python 虚拟环境
+    virtualenv --system-site-packages /usr/local/venv-jimv
+
+    # 导入 python 虚拟环境
+    source /usr/local/venv-jimv/bin/activate
+
+    # 自动导入 python 虚拟环境
+    echo '. /usr/local/venv-jimv/bin/activate' >> .bashrc
+
     # 安装 JimV-N 所需扩展库
     grep -v "^#" /usr/local/JimV-N/requirements.txt | xargs -n 1 pip install -i ${PYPI}
 }
