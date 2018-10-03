@@ -8,6 +8,7 @@ import signal
 import daemon
 import atexit
 import os
+import jimit as ji
 
 import time
 
@@ -82,6 +83,11 @@ def main():
 
         if config['DEBUG']:
             print threads_status
+
+        for k, v in threads_status.items():
+            # 如果某个引擎脱线 120 秒，则自动重启 JimV-N。
+            if (ji.Common.ts() - v['timestamp']) > 120:
+                Host.restart()
 
         time.sleep(1)
 
