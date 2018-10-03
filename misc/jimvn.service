@@ -11,6 +11,6 @@ RestartSec=2s
 #工作目录
 WorkingDirectory=/usr/local/JimV-N/
 #命令行(必须使用绝对路径)
-ExecStart=/usr/local/JimV-N/main.py
+ExecStart=/usr/local/venv-jimv/bin/python2.7 /usr/local/JimV-N/main.py
 #启动或者停止服务最大允许花费60秒
 TimeoutSec=60s
