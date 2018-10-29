@@ -56,7 +56,7 @@ do
             ;;
         -h|--help)
             echo 'INSTALL.sh [-h|--help|--version] {--redis_host,--redis_password,--redis_port}'
-            echo '如果忘记了 redis_password, redis_port 信息，可以在 JimV-C 的 /etc/jimvn.conf 文件中获得。'
+            echo '如果忘记了 redis_password, redis_port 信息，可以在 JimV-N 的 /etc/jimvn.conf 文件中获得。'
             exit 0
             ;;
         --)
