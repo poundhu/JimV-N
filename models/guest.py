@@ -45,7 +45,7 @@ class Guest(object):
         self.disk = kwargs.get('disk', None)
         self.xml = kwargs.get('xml', None)
         # Guest 系统镜像路径，不包含 dfs 卷标
-        self.system_image_path = self.disk['path']
+        self.system_image_path = self.disk.get('path', None) if isinstance(self.disk, dict) else None
         self.g = guestfs.GuestFS(python_return_dict=True)
         self.storage = Storage(storage_mode=kwargs.get('storage_mode', None), dfs_volume=kwargs.get('dfs_volume', None))
 
