@@ -1,5 +1,5 @@
 [Unit]
-Requisite=network-online.target
+Requisite=network-online.target libvirtd.service
 After=network-online.target network.target
 
 [Install]
@@ -8,9 +8,7 @@ WantedBy=multi-user.target
 [Service]
 Type=idle
 RestartSec=2s
-#工作目录
-WorkingDirectory=/usr/local/JimV-N/
 #命令行(必须使用绝对路径)
-ExecStart=/usr/local/venv-jimv/bin/python2.7 /usr/local/JimV-N/main.py
+ExecStart=/usr/bin/python2.7 /usr/lib64/python2.7/site-packages/jimv/node/main.pyc
 #启动或者停止服务最大允许花费60秒
 TimeoutSec=60s
