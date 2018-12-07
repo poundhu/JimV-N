@@ -9,20 +9,10 @@
 #  This script will help you to automation installed JimV-N.
 #
 
-export PYPI='https://mirrors.aliyun.com/pypi/simple/'
-export JIMVN_REPOSITORY_URL='https://github.com/jamesiter/JimV-N.git'
-export JIMVN_REPOSITORY_URL_CN='https://gitee.com/jimit/JimV-N.git'
-export JIMVN_DOWNLOAD_URL='https://github.com/jamesiter/JimV-N/archive/master.tar.gz'
-export COUNTRY=`curl http://iit.im/ip/country`
 export GLOBAL_CONFIG_KEY='H:GlobalConfig'
 export HOSTS_INFO='H:HostsInfo'
 export VM_NETWORK_KEY='vm_network'
 export VM_NETWORK_MANAGE_KEY='vm_manage_network'
-export CPU_COUNT=`grep '^processor' /proc/cpuinfo | wc -l`
-export LIBGUESTFISH_URL='http://download.libguestfs.org/1.36-stable/libguestfs-1.36.11.tar.gz'
-export LIBGUESTFISH_URL_CN='http://jimvlib.iit.im/libguestfs-1.36.11.tar.gz'
-export LIBGUESTFISH_FILENAME=`basename ${LIBGUESTFISH_URL}`
-export LIBGUESTFISH_DIRNAME=`basename -s .tar.gz ${LIBGUESTFISH_FILENAME}`
 export SHOW_WARNING_VTX=false
 
 ARGS=`getopt -o h --long redis_host:,redis_password:,redis_port:,version:,help -n 'INSTALL.sh' -- "$@"`
@@ -46,7 +36,6 @@ do
             ;;
         --version)
             export JIMV_VERSION=$2
-            export JIMVN_DOWNLOAD_URL=$(sed s@master@${JIMV_VERSION}@ <<< ${JIMVN_DOWNLOAD_URL})
             shift 2
             ;;
         -h|--help)
@@ -103,7 +92,6 @@ function check_precondition() {
 
     yum install epel-release -y
     yum install redis -y
-    yum install python-dmidecode -y
 
     # 代替语句 ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1'
     SERVER_IP=`hostname -I`; export SERVER_IP=${SERVER_IP%% *}
