@@ -12,6 +12,7 @@ import redis
 import time
 import base64
 import paramiko
+import re
 
 import libvirt
 import libvirt_qemu
@@ -148,6 +149,50 @@ class QGA(object):
             pass
 
         return memory_info
+
+    @staticmethod
+    def get_guest_ip_address(dom=None):
+        assert isinstance(dom, libvirt.virDomain)
+
+        pattern_inet = re.compile(
+            r'\s+inet ((?:(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d)))\.){3}(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d))))/'
+            r'(\S+) \S+ \S+ \S+ \S+ (\S+)')
+        ip_address = dict()
+
+        try:
+            exec_ret = libvirt_qemu.qemuAgentCommand(dom, json.dumps({
+                           'execute': 'guest-exec',
+                           'arguments': {
+                               'path': 'ip',
+                               'capture-output': True,
+                               'arg': [
+                                   'addr',
+                                   'show'
+                               ]
+                           }
+                           }),
+                           3,
+                           libvirt_qemu.VIR_DOMAIN_QEMU_AGENT_COMMAND_NOWAIT)
+
+            exec_ret = json.loads(exec_ret)
+
+            status_ret = QGA.get_guest_exec_status(dom=dom, pid=exec_ret['return']['pid'])
+
+            ip_address_str = base64.b64decode(json.loads(status_ret)['return']['out-data'])
+
+            for line in ip_address_str.split('\n'):
+                p = pattern_inet.match(line.rstrip())
+                if p is not None:
+                    fields = p.groups()
+                    ip_address[fields[8]] = {
+                        'ip': fields[0],
+                        'netmask': fields[7]
+                    }
+
+        except libvirt.libvirtError as e:
+            pass
+
+        return ip_address
 
 
 class Emit(object):
